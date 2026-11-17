@@ -62,6 +62,27 @@ def test_cli_flushes_langfuse_after_connection_error(monkeypatch):
     assert flushed == [True]
 
 
+def test_cli_redacts_credentials_from_connection_errors(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["kite-mcp-client", "--prompt", "hello"])
+    monkeypatch.setattr(
+        client_main,
+        "_initialize_langfuse",
+        lambda: SimpleNamespace(flush=lambda: None),
+    )
+
+    def fail(*args, **kwargs):
+        raise ConnectionError("request failed with Bearer cli-secret-123")
+
+    monkeypatch.setattr("client.agent.run", fail)
+
+    with pytest.raises(SystemExit, match="1"):
+        client_main.main()
+
+    error_output = capsys.readouterr().err
+    assert "cli-secret-123" not in error_output
+    assert "Bearer [REDACTED]" in error_output
+
+
 @pytest.mark.anyio
 async def test_agent_trace_records_question_and_final_answer(monkeypatch):
     observations = []
@@ -221,7 +242,9 @@ async def test_model_and_tool_observations_are_children_of_agent_trace(monkeypat
                         message=SimpleNamespace(content=None, tool_calls=[tool_call])
                     )
                 ],
-                usage=None,
+                usage=SimpleNamespace(
+                    prompt_tokens=20, completion_tokens=5, total_tokens=25
+                ),
             ),
             SimpleNamespace(
                 choices=[
@@ -229,7 +252,9 @@ async def test_model_and_tool_observations_are_children_of_agent_trace(monkeypat
                         message=SimpleNamespace(content="Done", tool_calls=[])
                     )
                 ],
-                usage=None,
+                usage=SimpleNamespace(
+                    prompt_tokens=30, completion_tokens=2, total_tokens=32
+                ),
             ),
         ]
     )
@@ -266,6 +291,8 @@ async def test_model_and_tool_observations_are_children_of_agent_trace(monkeypat
 
     root = observations[0]
     assert root["name"] == "agent-execution"
+    assert root["input"] == {"question": "Find ABC"}
+    assert root["output"] == {"answer": "Done"}
     child_observations = observations[1:]
     assert [item["name"] for item in child_observations] == [
         "openai-chat-completion",
@@ -273,6 +300,31 @@ async def test_model_and_tool_observations_are_children_of_agent_trace(monkeypat
         "openai-chat-completion",
     ]
     assert all(item["parent_id"] == root["id"] for item in child_observations)
+
+    first_generation, tool_observation, final_generation = child_observations
+    assert first_generation["input"]["messages"] == [
+        {"role": "user", "content": "Find ABC"}
+    ]
+    assert first_generation["output"]["tool_calls"] == [
+        {"id": "call-1", "name": "lookup", "arguments": '{"symbol":"ABC"}'}
+    ]
+    assert first_generation["metadata"]["latency_ms"] >= 0
+    assert first_generation["usage_details"] == {
+        "input": 20,
+        "output": 5,
+        "total": 25,
+    }
+    assert tool_observation["input"] == {
+        "arguments": '{"symbol":"ABC"}'
+    }
+    assert tool_observation["output"] == {"matches": 1}
+    assert final_generation["output"]["content"] == "Done"
+    assert final_generation["metadata"]["latency_ms"] >= 0
+    assert final_generation["usage_details"] == {
+        "input": 30,
+        "output": 2,
+        "total": 32,
+    }
 
 
 def test_secret_filter_redacts_nested_credentials():
