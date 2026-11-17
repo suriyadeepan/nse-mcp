@@ -14,7 +14,7 @@ WHERE symbol = ?
   AND (year < ? OR (year = ? AND month <= ?))
   AND timestamp >= CAST(? AS TIMESTAMPTZ)
   AND timestamp <= CAST(? AS TIMESTAMPTZ)
-ORDER BY timestamp ASC
+ORDER BY timestamp ASC, open ASC, high ASC, low ASC, close ASC, volume ASC
 LIMIT ?
 """
 

@@ -7,7 +7,7 @@ legacy top-level Parquet files.
 
 1. [x] Add centralized analytics configuration and the DuckDB dependency; reuse the existing server package and processed-data conventions.
 2. [x] Add predefined parameterized DuckDB queries and shared validation for symbols, timestamps, ranges, limits, and enumerated inputs.
-3. [ ] Implement `get_bars()` with ascending UTC timestamps, OHLCV schema, and configured bounds.
+3. [x] Implement `get_bars()` with ascending UTC timestamps, OHLCV schema, and configured bounds.
 4. [ ] Implement `intraday_stats()` and `get_price_extremes()` with IST trading dates, correct aggregation, deterministic ties, and safe empty/zero-volume results.
 5. [ ] Implement `get_volume_stats()` with chronological IST hourly/daily buckets and clearly defined candle versus bucket averages.
 6. [ ] Implement `compute_indicators()` with configurable periods, sufficient prior-candle warm-up, explicit null/insufficient-history behavior, and no look-ahead.
