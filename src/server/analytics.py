@@ -2,7 +2,7 @@
 
 from collections.abc import Iterable
 from datetime import date, datetime, timedelta, timezone
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 from zoneinfo import ZoneInfo
 
 import duckdb
@@ -17,6 +17,7 @@ from .queries import (
     VOLUME_STATS_SQL,
 )
 from .validation import (
+    AnalyticsDataError,
     AnalyticsInputError,
     validate_bucket,
     validate_datetime_range,
@@ -94,10 +95,21 @@ class VolumeStatsResult(TypedDict):
     bar_count: int
 
 
+class IndicatorValue(TypedDict):
+    """One output candle with only the requested indicator columns present."""
+
+    timestamp: datetime
+    close: float
+    SMA: NotRequired[float | None]
+    EMA: NotRequired[float | None]
+    RSI: NotRequired[float | None]
+    ATR: NotRequired[float | None]
+
+
 class IndicatorsResult(TypedDict):
     """Timestamped closing prices, indicator values, and readiness status."""
 
-    values: list[dict[str, object]]
+    values: list[IndicatorValue]
     indicator_parameters: dict[str, dict[str, int]]
     indicator_status: dict[str, str]
     returned_count: int
@@ -133,28 +145,32 @@ def _parquet_glob() -> str:
 
 def _query_rows(query: str, params: list[object]) -> list[dict[str, object]]:
     """Execute a predefined query with the shared DuckDB resource limits."""
-    connection = duckdb.connect(
-        database=":memory:",
-        config={
-            "memory_limit": ANALYTICS_CONFIG.duckdb_memory_limit,
-            "threads": str(ANALYTICS_CONFIG.duckdb_threads),
-        },
-    )
+    connection = None
     try:
-        return (
-            connection.sql(query, params=params)
-            .to_arrow_table()
-            .to_pylist()
+        connection = duckdb.connect(
+            database=":memory:",
+            config={
+                "memory_limit": ANALYTICS_CONFIG.duckdb_memory_limit,
+                "threads": str(ANALYTICS_CONFIG.duckdb_threads),
+            },
         )
+        return connection.sql(query, params=params).to_arrow_table().to_pylist()
+    except duckdb.Error as exc:
+        raise AnalyticsDataError(
+            "analytics query could not read processed data"
+        ) from exc
     finally:
-        connection.close()
+        if connection is not None:
+            connection.close()
 
 
 def _normalize_timestamp(value: object) -> datetime | None:
     if value is None:
         return None
     if not isinstance(value, datetime) or value.tzinfo is None:
-        raise ValueError("processed Parquet timestamps must include a timezone")
+        raise AnalyticsDataError(
+            "processed Parquet timestamps must include a timezone"
+        )
     return value.astimezone(timezone.utc)
 
 
@@ -424,13 +440,14 @@ def compute_indicators(
         "RSI": "rsi_value",
         "ATR": "atr_value",
     }
-    values: list[dict[str, object]] = []
+    values: list[IndicatorValue] = []
     for row in rows:
-        output: dict[str, object] = {
+        output: IndicatorValue = {
             "timestamp": _normalize_timestamp(row["timestamp"]),
             "close": row["close"],
-        }
-        output.update({name: row[field_names[name]] for name in requested})
+        }  # type: ignore[typeddict-item]
+        for name in requested:
+            output[name] = row[field_names[name]]  # type: ignore[literal-required]
         values.append(output)
 
     indicator_status = {

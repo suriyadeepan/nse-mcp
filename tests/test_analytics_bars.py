@@ -111,6 +111,13 @@ def test_get_bars_rejects_invalid_inputs_and_excessive_limit(bars_dataset, monke
         analytics.get_bars(
             "AAA' OR 1=1 --", "2024-01-02T03:45:00Z", "2024-01-02T03:46:00Z", 10
         )
+    with pytest.raises(AnalyticsInputError, match="ISO-8601"):
+        analytics.get_bars(
+            "AAA",
+            "2024-01-02T03:45:00Z' OR 1=1 --",
+            "2024-01-02T03:46:00Z",
+            10,
+        )
     with pytest.raises(AnalyticsInputError, match="on or after"):
         analytics.get_bars(
             "AAA", "2024-01-02T03:46:00Z", "2024-01-02T03:45:00Z", 10

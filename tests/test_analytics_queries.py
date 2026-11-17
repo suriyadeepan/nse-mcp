@@ -12,6 +12,8 @@ from src.server import validation
 from src.server.data import list_symbols
 from src.server.queries import BARS_BEFORE_START_SQL, BARS_IN_RANGE_SQL, DAILY_BARS_SQL
 from src.server.validation import (
+    AnalyticsDataError,
+    AnalyticsError,
     AnalyticsInputError,
     validate_bucket,
     validate_datetime,
@@ -104,6 +106,25 @@ def test_symbol_validation_uses_configured_allowlist(processed_dataset, monkeypa
         validate_symbols(["AAA", "AAA"])
     with pytest.raises(AnalyticsInputError, match="at least 2"):
         validate_symbols(["AAA"], minimum=2)
+
+
+def test_analytics_errors_have_stable_public_schemas(processed_dataset, monkeypatch):
+    invalid = AnalyticsInputError("bad request")
+    assert isinstance(invalid, AnalyticsError)
+    assert invalid.as_dict() == {"code": "invalid_input", "message": "bad request"}
+
+    missing_data = processed_dataset / "not-present"
+    monkeypatch.setattr(
+        validation,
+        "ANALYTICS_CONFIG",
+        replace(validation.ANALYTICS_CONFIG, processed_data_dir=missing_data),
+    )
+    with pytest.raises(AnalyticsDataError) as caught:
+        validate_symbol("AAA")
+    assert caught.value.as_dict() == {
+        "code": "data_unavailable",
+        "message": "processed analytics data is unavailable",
+    }
 
 
 def test_datetime_and_date_validation_normalize_and_bound_inputs():

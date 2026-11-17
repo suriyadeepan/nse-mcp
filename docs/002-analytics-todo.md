@@ -12,5 +12,5 @@ legacy top-level Parquet files.
 5. [x] Implement `get_volume_stats()` with chronological IST hourly/daily buckets and clearly defined candle versus bucket averages.
 6. [x] Implement `compute_indicators()` with configurable periods, sufficient prior-candle warm-up, explicit null/insufficient-history behavior, and no look-ahead.
 7. [x] Implement daily `compare_symbols()` metrics and return ranking using common trading dates, 252-day volatility annualization, and missing-data-safe returns.
-8. [ ] Define consistent documented result/error schemas; keep calculations and filtering in DuckDB over partition-pruned Parquet scans, with no caller SQL or path inputs.
-9. [ ] Add synthetic Parquet tests for calculations, empty/invalid inputs, duplicates and gaps, IST/session boundaries, indicator warm-up/look-ahead, symbol history mismatches, limits, and SQL injection; run relevant tests and record limitations.
+8. [x] Define consistent documented result/error schemas; keep calculations and filtering in DuckDB over partition-pruned Parquet scans, with no caller SQL or path inputs.
+9. [x] Add synthetic Parquet tests for calculations, empty/invalid inputs, duplicates and gaps, IST/session boundaries, indicator warm-up/look-ahead, symbol history mismatches, limits, and SQL injection; run relevant tests and record limitations in [analytics-results.md](analytics-results.md).

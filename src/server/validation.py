@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta, timezone
+from typing import TypedDict
 
 from .config import ANALYTICS_CONFIG
 from .data import list_symbols
@@ -11,13 +12,45 @@ VOLUME_BUCKETS = ("hourly", "daily")
 COMPARISON_INTERVALS = ("daily",)
 
 
-class AnalyticsInputError(ValueError):
+class AnalyticsErrorResult(TypedDict):
+    """Stable machine-readable form of an analytics exception."""
+
+    code: str
+    message: str
+
+
+class AnalyticsError(ValueError):
+    """Base error with a stable code and serializable public message."""
+
+    code = "analytics_error"
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+    def as_dict(self) -> AnalyticsErrorResult:
+        """Return the documented error schema without traceback details."""
+        return {"code": self.code, "message": self.message}
+
+
+class AnalyticsInputError(AnalyticsError):
     """Raised when an analytics input is malformed or outside configured limits."""
+
+    code = "invalid_input"
+
+
+class AnalyticsDataError(AnalyticsError):
+    """Raised when configured processed data cannot be read or queried."""
+
+    code = "data_unavailable"
 
 
 def _available_symbols() -> frozenset[str]:
     """Read the allowlist from configured processed Parquet files."""
-    return frozenset(list_symbols(ANALYTICS_CONFIG.processed_data_dir))
+    try:
+        return frozenset(list_symbols(ANALYTICS_CONFIG.processed_data_dir))
+    except OSError as exc:
+        raise AnalyticsDataError("processed analytics data is unavailable") from exc
 
 
 def validate_symbol(symbol: object) -> str:
