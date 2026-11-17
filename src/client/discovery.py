@@ -3,6 +3,7 @@
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
+from jsonschema import Draft202012Validator, ValidationError
 from mcp import Client, types
 
 
@@ -11,6 +12,14 @@ DEFAULT_SERVER_URL = "http://localhost:8000/mcp"
 
 class MCPConnectionError(ConnectionError):
     """Raised when the Streamable HTTP MCP endpoint cannot be reached."""
+
+
+class ToolArgumentError(ValueError):
+    """Raised when model-generated arguments do not match a discovered schema."""
+
+
+class ToolExecutionError(RuntimeError):
+    """Raised when an MCP tool reports an execution failure."""
 
 
 @asynccontextmanager
@@ -67,9 +76,36 @@ def to_openai_tools(tools: list[types.Tool]) -> list[dict[str, Any]]:
     return [to_openai_tool(tool) for tool in tools]
 
 
-def call_tool(server_url: str, name: str, arguments: dict[str, Any]) -> Any:
-    """Invoke `name` on the server with `arguments`."""
-    raise NotImplementedError
+def validate_tool_arguments(tool: types.Tool, arguments: Any) -> None:
+    """Validate model-generated arguments against the server's JSON Schema."""
+    try:
+        Draft202012Validator(
+            tool.input_schema,
+            format_checker=Draft202012Validator.FORMAT_CHECKER,
+        ).validate(arguments)
+    except ValidationError as exc:
+        path = "/" + "/".join(str(part) for part in exc.absolute_path)
+        raise ToolArgumentError(
+            f"Invalid arguments for MCP tool {tool.name!r} at {path}: "
+            "arguments do not match the discovered schema."
+        ) from exc
+
+
+async def call_tool(
+    client: Client,
+    tool: types.Tool,
+    arguments: Any,
+) -> Any:
+    """Validate arguments and invoke the discovered MCP tool."""
+    validate_tool_arguments(tool, arguments)
+    result = await client.call_tool(tool.name, arguments)
+    if result.is_error:
+        raise ToolExecutionError(
+            f"MCP tool {tool.name!r} reported an execution error."
+        )
+    if result.structured_content is not None:
+        return result.structured_content
+    return [content.model_dump(mode="json") for content in result.content]
 
 
 async def discover_tools(server_url: str = DEFAULT_SERVER_URL) -> dict[str, types.Tool]:
