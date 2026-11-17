@@ -5,9 +5,12 @@ import logging
 
 from mcp.server import MCPServer
 
+from .tools import register_tools
+
 logger = logging.getLogger(__name__)
 
 mcp = MCPServer("kite-mcp")
+register_tools(mcp)
 app = mcp.streamable_http_app()
 
 

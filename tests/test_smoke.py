@@ -23,6 +23,11 @@ def test_tool_registry_is_unique():
     from server.tools import registry
 
     tools = registry()
-    assert "list_symbols" in tools
-    assert "get_bars" in tools
-    assert len(tools) == 3
+    assert set(tools) == {
+        "get_bars",
+        "intraday_stats",
+        "get_price_extremes",
+        "get_volume_stats",
+        "compute_indicators",
+        "compare_symbols",
+    }
