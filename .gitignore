@@ -9,9 +9,17 @@ wheels/
 # Virtual environments
 .venv
 
+# macOS metadata
+.DS_Store
+
 # Data (external, symlinked)
 data/
 
 # Local secrets and runtime logs
 .env
 logs/
+
+# Terraform-generated providers and local state
+**/.terraform/
+*.tfstate
+*.tfstate.*
