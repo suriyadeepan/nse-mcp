@@ -48,6 +48,123 @@ GROUP BY symbol, trading_date
 ORDER BY symbol ASC, trading_date ASC
 """
 
+COMPARE_SYMBOLS_SQL = """
+WITH requested_symbols AS (
+  SELECT unnest(?) AS symbol
+), daily_bars AS (
+  SELECT
+    symbol,
+    trading_date,
+    last(close ORDER BY timestamp, open, high, low, close, volume) AS close,
+    CAST(sum(volume) AS DOUBLE) AS volume
+  FROM read_parquet(?, hive_partitioning = true)
+  WHERE symbol IN (SELECT symbol FROM requested_symbols)
+    AND (year > ? OR (year = ? AND month >= ?))
+    AND (year < ? OR (year = ? AND month <= ?))
+    AND trading_date >= ?
+    AND trading_date <= ?
+  GROUP BY symbol, trading_date
+), common_dates AS (
+  SELECT trading_date
+  FROM daily_bars
+  GROUP BY trading_date
+  HAVING count(DISTINCT symbol) = ?
+), common_daily AS (
+  SELECT daily_bars.*
+  FROM daily_bars
+  INNER JOIN common_dates USING (trading_date)
+), sequenced AS (
+  SELECT
+    *,
+    row_number() OVER (PARTITION BY symbol ORDER BY trading_date) AS day_number,
+    lag(close) OVER (PARTITION BY symbol ORDER BY trading_date) AS previous_close
+  FROM common_daily
+), daily_returns AS (
+  SELECT
+    *,
+    CASE WHEN day_number > 1 AND previous_close != 0
+      THEN close / previous_close - 1
+    END AS daily_return
+  FROM sequenced
+), wealth AS (
+  SELECT
+    *,
+    product(1 + daily_return) OVER (
+      PARTITION BY symbol ORDER BY trading_date
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS cumulative_return
+  FROM daily_returns
+), drawdowns AS (
+  SELECT
+    *,
+    cumulative_return /
+      greatest(1.0, max(cumulative_return) OVER (
+        PARTITION BY symbol ORDER BY trading_date
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+      )) - 1 AS drawdown
+  FROM wealth
+), activity AS (
+  SELECT
+    symbol,
+    count(*) AS common_trading_days,
+    CAST(sum(volume) AS DOUBLE) AS total_volume,
+    CAST(avg(volume) AS DOUBLE) AS average_daily_volume,
+    CAST(avg(close * volume) AS DOUBLE) AS average_daily_turnover
+  FROM common_daily
+  GROUP BY symbol
+), performance AS (
+  SELECT
+    symbol,
+    CASE WHEN arg_min(close, trading_date) != 0
+      THEN arg_max(close, trading_date) / arg_min(close, trading_date) - 1
+    END AS total_return
+  FROM common_daily
+  GROUP BY symbol
+), risk AS (
+  SELECT
+    symbol,
+    CAST(avg(daily_return) AS DOUBLE) AS average_daily_return,
+    CAST(stddev_samp(daily_return) * sqrt(252.0) AS DOUBLE)
+      AS annualized_volatility,
+    CAST(min(drawdown) AS DOUBLE) AS maximum_drawdown
+  FROM drawdowns
+  GROUP BY symbol
+), common_date_summary AS (
+  SELECT list(trading_date ORDER BY trading_date) AS common_trading_dates
+  FROM common_dates
+), metrics AS (
+  SELECT
+    requested_symbols.symbol,
+    common_date_summary.common_trading_dates,
+    coalesce(activity.common_trading_days, 0) AS common_trading_days,
+    CASE WHEN coalesce(activity.common_trading_days, 0) >= 2
+      THEN performance.total_return * 100 END AS total_return_pct,
+    CASE WHEN coalesce(activity.common_trading_days, 0) >= 2
+      THEN risk.average_daily_return * 100 END AS average_daily_return_pct,
+    CASE WHEN coalesce(activity.common_trading_days, 0) >= 3
+      THEN risk.annualized_volatility * 100 END AS annualized_volatility_pct,
+    CASE WHEN coalesce(activity.common_trading_days, 0) >= 2
+      THEN risk.maximum_drawdown * 100 END AS maximum_drawdown_pct,
+    activity.total_volume,
+    activity.average_daily_volume,
+    activity.average_daily_turnover
+  FROM requested_symbols
+  CROSS JOIN common_date_summary
+  LEFT JOIN activity USING (symbol)
+  LEFT JOIN performance USING (symbol)
+  LEFT JOIN risk USING (symbol)
+), ranked AS (
+  SELECT *, CASE WHEN total_return_pct IS NOT NULL THEN
+    row_number() OVER (ORDER BY total_return_pct DESC NULLS LAST, symbol)
+  END AS rank
+  FROM metrics
+)
+SELECT *, CASE WHEN common_trading_days >= 3
+  THEN 'ready' ELSE 'insufficient_history' END AS status
+FROM ranked
+ORDER BY rank NULLS LAST, symbol
+"""
+
 INTRADAY_STATS_SQL = """
 SELECT
   first(open ORDER BY timestamp, open, high, low, close, volume) AS open,

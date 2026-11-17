@@ -1,7 +1,7 @@
 """Reusable DuckDB analytics over configured processed Parquet data."""
 
 from collections.abc import Iterable
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import TypedDict
 from zoneinfo import ZoneInfo
 
@@ -10,6 +10,7 @@ import duckdb
 from .config import ANALYTICS_CONFIG
 from .queries import (
     BARS_IN_RANGE_SQL,
+    COMPARE_SYMBOLS_SQL,
     INDICATOR_CALCULATIONS_SQL,
     INTRADAY_STATS_SQL,
     PRICE_EXTREMES_SQL,
@@ -21,8 +22,10 @@ from .validation import (
     validate_datetime_range,
     validate_indicators,
     validate_indicator_parameters,
+    validate_interval,
     validate_limit,
     validate_symbol,
+    validate_symbols,
     validate_trading_date,
 )
 
@@ -98,6 +101,30 @@ class IndicatorsResult(TypedDict):
     indicator_parameters: dict[str, dict[str, int]]
     indicator_status: dict[str, str]
     returned_count: int
+
+
+class SymbolComparison(TypedDict):
+    """One symbol's performance, risk, and activity over common IST dates."""
+
+    symbol: str
+    rank: int | None
+    status: str
+    common_trading_days: int
+    total_return_pct: float | None
+    average_daily_return_pct: float | None
+    annualized_volatility_pct: float | None
+    maximum_drawdown_pct: float | None
+    total_volume: float | None
+    average_daily_volume: float | None
+    average_daily_turnover: float | None
+
+
+class CompareSymbolsResult(TypedDict):
+    """Comparison metrics and the dates shared by every requested symbol."""
+
+    common_trading_dates: list[date]
+    common_trading_days: int
+    symbols: list[SymbolComparison]
 
 
 def _parquet_glob() -> str:
@@ -423,4 +450,83 @@ def compute_indicators(
         },
         "indicator_status": indicator_status,
         "returned_count": len(values),
+    }
+
+
+def compare_symbols(
+    symbols: Iterable[object],
+    start_datetime: datetime | str,
+    end_datetime: datetime | str,
+    interval: str = "daily",
+) -> CompareSymbolsResult:
+    """Compare symbols over the trading dates present for every symbol.
+
+    Range instants are normalized to UTC and mapped to IST calendar dates for
+    daily aggregation. Performance and risk use daily close-to-close returns;
+    annualized volatility is sample standard deviation times sqrt(252), and
+    maximum drawdown is the most negative peak-to-trough percentage. Volume
+    and turnover averages use the shared-date set. Metrics requiring returns
+    return metrics are ``None`` with ``insufficient_history`` when fewer than
+    two common closes exist. Sample volatility needs three common closes (two
+    returns), so the overall status remains ``insufficient_history`` below that
+    point. Ranking is descending by total return, with symbol order as a
+    deterministic tie-breaker.
+    """
+    validated_symbols = validate_symbols(symbols, minimum=2)
+    validate_limit(
+        len(validated_symbols), maximum=ANALYTICS_CONFIG.max_returned_rows
+    )
+    start, end = validate_datetime_range(start_datetime, end_datetime)
+    validate_interval(interval)
+    market_timezone = ZoneInfo(ANALYTICS_CONFIG.market_timezone)
+    start_date = start.astimezone(market_timezone).date()
+    end_date = end.astimezone(market_timezone).date()
+    # A local trading date can begin in the prior UTC calendar month. Widen
+    # Hive partition bounds by one day while retaining exact local date filters.
+    partition_start = start_date - timedelta(days=1)
+    start_year, start_month = (
+        partition_start.strftime("%Y"),
+        partition_start.strftime("%m"),
+    )
+    end_year, end_month = end_date.strftime("%Y"), end_date.strftime("%m")
+    rows = _query_rows(
+        COMPARE_SYMBOLS_SQL,
+        [
+            list(validated_symbols),
+            _parquet_glob(),
+            start_year,
+            start_year,
+            start_month,
+            end_year,
+            end_year,
+            end_month,
+            start_date,
+            end_date,
+            len(validated_symbols),
+        ],
+    )
+    common_dates = rows[0]["common_trading_dates"] if rows else []
+    if common_dates is None:
+        common_dates = []
+    results: list[SymbolComparison] = []
+    for row in rows:
+        results.append(
+            {
+                "symbol": row["symbol"],
+                "rank": row["rank"],
+                "status": row["status"],
+                "common_trading_days": row["common_trading_days"],
+                "total_return_pct": row["total_return_pct"],
+                "average_daily_return_pct": row["average_daily_return_pct"],
+                "annualized_volatility_pct": row["annualized_volatility_pct"],
+                "maximum_drawdown_pct": row["maximum_drawdown_pct"],
+                "total_volume": row["total_volume"],
+                "average_daily_volume": row["average_daily_volume"],
+                "average_daily_turnover": row["average_daily_turnover"],
+            }
+        )
+    return {
+        "common_trading_dates": common_dates,
+        "common_trading_days": len(common_dates),
+        "symbols": results,
     }
