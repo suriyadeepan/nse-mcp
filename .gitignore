@@ -11,3 +11,7 @@ wheels/
 
 # Data (external, symlinked)
 data/
+
+# Local secrets and runtime logs
+.env
+logs/
