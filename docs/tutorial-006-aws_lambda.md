@@ -32,32 +32,20 @@ Set the trusted dataset location and select S3 as the data source. DuckDB's AWS 
 
 ```sh
 export PROCESSED_DATA_SOURCE=s3
-export PROCESSED_DATA_S3_BUCKET="$DATA_BUCKET"
-export PROCESSED_DATA_S3_PREFIX="$DATASET_PREFIX"
+export PROCESSED_DATA_S3_BUCKET="nse-mcp-data"
+export PROCESSED_DATA_S3_PREFIX="data/processed"
 export AWS_REGION=ap-south-1
 # Optional when using a named AWS CLI profile:
 # export AWS_PROFILE=your-profile
 ```
 
-Run an example query using the same connection setup as the analytics server:
+Run a partition-filtered query for RELIANCE's August 2026 one-minute data. The script reports sessions, bar count, and the month's opening-to-closing move:
 
 ```sh
-uv run python -c '
-from src.server.config import load_analytics_config
-from src.server.data import connect_duckdb, parquet_glob
-
-config = load_analytics_config()
-connection = connect_duckdb(config)
-try:
-    print(connection.execute(
-        "SELECT symbol, count(*) AS rows "
-        "FROM read_parquet(?, hive_partitioning = true) "
-        "WHERE symbol = ? GROUP BY symbol",
-        [parquet_glob(config), "RELIANCE"],
-    ).fetchall())
-finally:
-    connection.close()
-'
+uv run python -m scripts.query_s3_summary \
+  --symbol RELIANCE \
+  --year 2026 \
+  --month 8
 ```
 
 The local connection uses DuckDB's `credential_chain`, which reads AWS CLI credentials. The deployed Lambda will use that same provider with its execution-role credentials.
