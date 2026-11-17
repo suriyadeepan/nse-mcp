@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 
 mcp = MCPServer("kite-mcp")
 register_tools(mcp)
-app = mcp.streamable_http_app()
+STREAMABLE_HTTP_PATH = "/mcp"
+app = mcp.streamable_http_app(streamable_http_path=STREAMABLE_HTTP_PATH)
 
 
 def main() -> None:
