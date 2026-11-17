@@ -10,3 +10,7 @@ Use the current [MCP Python SDK 2.x documentation](https://py.sdk.modelcontextpr
 6. [ ] Keep the server read-only: accept no arbitrary SQL or filesystem paths and perform no database or filesystem writes.
 7. [ ] Create `tests/test_mcp_server.py` and test startup and all six tools through the MCP interface over stdio and Streamable HTTP: discovery, valid results, invalid arguments, empty results, and execution errors.
 8. [ ] Run the existing DuckDB analytics tests and confirm they remain unaffected.
+
+## Bug log
+
+9. [x] Fix `logs/bug-003-01.txt`: configure pytest to import repository-root modules during test collection.
