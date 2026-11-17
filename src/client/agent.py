@@ -1,9 +1,10 @@
 """Agent loop that drives the MCP server tools."""
 
+import asyncio
 from collections.abc import Sequence
 from typing import Any
 
-from client.discovery import discover_tools
+from client.discovery import discover_tools, to_openai_tools
 
 
 class Agent:
@@ -13,10 +14,12 @@ class Agent:
         self.server_url = server_url
         self.model = model
         self.tools: dict[str, Any] = {}
+        self.openai_tools: list[dict[str, Any]] = []
 
-    def connect(self) -> dict[str, Any]:
+    async def connect(self) -> dict[str, Any]:
         """Discover the tools exposed by the server."""
-        self.tools = discover_tools(self.server_url)
+        self.tools = await discover_tools(self.server_url)
+        self.openai_tools = to_openai_tools(list(self.tools.values()))
         return self.tools
 
     def run(self, prompt: str) -> str:
@@ -27,5 +30,5 @@ class Agent:
 def run(server_url: str, prompt: str, model: str = "") -> str:
     """Connect an agent to `server_url` and answer `prompt`."""
     agent = Agent(server_url, model=model)
-    agent.connect()
+    asyncio.run(agent.connect())
     return agent.run(prompt)
