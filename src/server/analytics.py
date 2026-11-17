@@ -2,12 +2,20 @@
 
 from datetime import date, datetime, timezone
 from typing import TypedDict
+from zoneinfo import ZoneInfo
 
 import duckdb
 
 from .config import ANALYTICS_CONFIG
-from .queries import BARS_IN_RANGE_SQL, INTRADAY_STATS_SQL, PRICE_EXTREMES_SQL
+from .queries import (
+    BARS_IN_RANGE_SQL,
+    INTRADAY_STATS_SQL,
+    PRICE_EXTREMES_SQL,
+    VOLUME_STATS_SQL,
+)
 from .validation import (
+    AnalyticsInputError,
+    validate_bucket,
     validate_datetime_range,
     validate_limit,
     validate_symbol,
@@ -58,6 +66,25 @@ class PriceExtremesResult(TypedDict):
     lowest_low_timestamp: datetime | None
     range_absolute: float | None
     range_percentage: float | None
+
+
+class VolumeBucket(TypedDict):
+    """One chronologically ordered IST bucket and its aggregate volume."""
+
+    bucket: str
+    volume: int | float
+
+
+class VolumeStatsResult(TypedDict):
+    """Candle-level volume statistics and IST bucket totals."""
+
+    total_volume: int | float | None
+    average_volume: float | None
+    maximum_volume: int | float | None
+    minimum_volume: int | float | None
+    average_bucket_volume: float | None
+    volume_by_bucket: list[VolumeBucket]
+    bar_count: int
 
 
 def _parquet_glob() -> str:
@@ -189,3 +216,75 @@ def get_price_extremes(
     )
     row["lowest_low_timestamp"] = _normalize_timestamp(row["lowest_low_timestamp"])
     return row  # type: ignore[return-value]
+
+
+def get_volume_stats(
+    symbol: str,
+    start_datetime: datetime | str,
+    end_datetime: datetime | str,
+    bucket: str,
+) -> VolumeStatsResult:
+    """Summarize candle volumes and chronological hourly/daily IST buckets.
+
+    ``average_volume``, ``maximum_volume``, and ``minimum_volume`` describe
+    individual candles. ``average_bucket_volume`` is the mean of the returned
+    bucket totals. Daily labels use ``YYYY-MM-DD``; hourly labels are ISO-8601
+    timestamps in the configured market timezone. Empty ranges have no volume
+    metrics and an empty bucket list.
+    """
+    validated_symbol = validate_symbol(symbol)
+    start, end = validate_datetime_range(start_datetime, end_datetime)
+    validated_bucket = validate_bucket(bucket)
+    start_year, start_month = start.strftime("%Y"), start.strftime("%m")
+    end_year, end_month = end.strftime("%Y"), end.strftime("%m")
+    bucket_unit = "hour" if validated_bucket == "hourly" else "day"
+    rows = _query_rows(
+        VOLUME_STATS_SQL,
+        [
+            _parquet_glob(),
+            validated_symbol,
+            start_year,
+            start_year,
+            start_month,
+            end_year,
+            end_year,
+            end_month,
+            start.isoformat(),
+            end.isoformat(),
+            bucket_unit,
+            ANALYTICS_CONFIG.market_timezone,
+            ANALYTICS_CONFIG.max_returned_rows + 1,
+        ],
+    )
+    bucket_rows = [row for row in rows if row["bucket"] is not None]
+    if len(bucket_rows) > ANALYTICS_CONFIG.max_returned_rows:
+        raise AnalyticsInputError(
+            "volume bucket count exceeds the configured maximum of "
+            f"{ANALYTICS_CONFIG.max_returned_rows}"
+        )
+
+    summary = rows[0]
+    market_timezone = ZoneInfo(ANALYTICS_CONFIG.market_timezone)
+    volume_by_bucket: list[VolumeBucket] = []
+    for row in bucket_rows:
+        bucket_value = row["bucket"]
+        if not isinstance(bucket_value, datetime):
+            raise ValueError("DuckDB returned an unexpected volume bucket type")
+        label = (
+            bucket_value.date().isoformat()
+            if validated_bucket == "daily"
+            else bucket_value.replace(tzinfo=market_timezone).isoformat()
+        )
+        volume_by_bucket.append(
+            {"bucket": label, "volume": row["bucket_volume"]}
+        )
+
+    return {
+        "total_volume": summary["total_volume"],
+        "average_volume": summary["average_volume"],
+        "maximum_volume": summary["maximum_volume"],
+        "minimum_volume": summary["minimum_volume"],
+        "average_bucket_volume": summary["average_bucket_volume"],
+        "volume_by_bucket": volume_by_bucket,
+        "bar_count": summary["bar_count"],
+    }  # type: ignore[return-value]

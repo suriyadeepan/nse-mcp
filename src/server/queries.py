@@ -101,3 +101,46 @@ SELECT
   END AS range_percentage
 FROM filtered
 """
+
+VOLUME_STATS_SQL = """
+WITH filtered AS (
+  SELECT timestamp, volume
+  FROM read_parquet(?, hive_partitioning = true)
+  WHERE symbol = ?
+    AND (year > ? OR (year = ? AND month >= ?))
+    AND (year < ? OR (year = ? AND month <= ?))
+    AND timestamp >= CAST(? AS TIMESTAMPTZ)
+    AND timestamp <= CAST(? AS TIMESTAMPTZ)
+), buckets AS (
+  SELECT
+    date_trunc(?, timezone(?, timestamp)) AS bucket,
+    CAST(sum(volume) AS DOUBLE) AS bucket_volume
+  FROM filtered
+  GROUP BY bucket
+), totals AS (
+  SELECT
+    CAST(sum(volume) AS DOUBLE) AS total_volume,
+    CAST(avg(volume) AS DOUBLE) AS average_volume,
+    CAST(max(volume) AS DOUBLE) AS maximum_volume,
+    CAST(min(volume) AS DOUBLE) AS minimum_volume,
+    count(*) AS bar_count
+  FROM filtered
+), bucket_totals AS (
+  SELECT CAST(avg(bucket_volume) AS DOUBLE) AS average_bucket_volume
+  FROM buckets
+)
+SELECT
+  totals.total_volume,
+  totals.average_volume,
+  totals.maximum_volume,
+  totals.minimum_volume,
+  totals.bar_count,
+  bucket_totals.average_bucket_volume,
+  buckets.bucket,
+  buckets.bucket_volume
+FROM totals
+CROSS JOIN bucket_totals
+LEFT JOIN buckets ON true
+ORDER BY buckets.bucket ASC
+LIMIT ?
+"""
