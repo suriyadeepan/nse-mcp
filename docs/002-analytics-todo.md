@@ -10,7 +10,7 @@ legacy top-level Parquet files.
 3. [x] Implement `get_bars()` with ascending UTC timestamps, OHLCV schema, and configured bounds.
 4. [x] Implement `intraday_stats()` and `get_price_extremes()` with IST trading dates, correct aggregation, deterministic ties, and safe empty/zero-volume results.
 5. [x] Implement `get_volume_stats()` with chronological IST hourly/daily buckets and clearly defined candle versus bucket averages.
-6. [ ] Implement `compute_indicators()` with configurable periods, sufficient prior-candle warm-up, explicit null/insufficient-history behavior, and no look-ahead.
+6. [x] Implement `compute_indicators()` with configurable periods, sufficient prior-candle warm-up, explicit null/insufficient-history behavior, and no look-ahead.
 7. [ ] Implement daily `compare_symbols()` metrics and return ranking using common trading dates, 252-day volatility annualization, and missing-data-safe returns.
 8. [ ] Define consistent documented result/error schemas; keep calculations and filtering in DuckDB over partition-pruned Parquet scans, with no caller SQL or path inputs.
 9. [ ] Add synthetic Parquet tests for calculations, empty/invalid inputs, duplicates and gaps, IST/session boundaries, indicator warm-up/look-ahead, symbol history mismatches, limits, and SQL injection; run relevant tests and record limitations.

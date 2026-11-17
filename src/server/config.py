@@ -14,6 +14,7 @@ class AnalyticsConfig:
     max_returned_rows: int = 100_000
     duckdb_memory_limit: str = "1GB"
     duckdb_threads: int = 4
+    indicator_default_period: int = 14
     indicator_warmup_default: int = 250
     indicator_warmup_limit: int = 10_000
 

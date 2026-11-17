@@ -14,6 +14,7 @@ def test_analytics_defaults_follow_processed_data_conventions():
     assert config.max_returned_rows > 0
     assert config.duckdb_memory_limit
     assert config.duckdb_threads > 0
+    assert config.indicator_default_period > 0
     assert config.indicator_warmup_default > 0
     assert config.indicator_warmup_default <= config.indicator_warmup_limit
 

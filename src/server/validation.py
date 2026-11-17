@@ -1,6 +1,6 @@
 """Shared input validation for analytical query entry points."""
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta, timezone
 
 from .config import ANALYTICS_CONFIG
@@ -159,3 +159,39 @@ def validate_indicators(indicators: Iterable[object]) -> tuple[str, ...]:
     if len(set(validated)) != len(validated):
         raise AnalyticsInputError("indicators must not contain duplicates")
     return validated
+
+
+def validate_indicator_parameters(
+    indicators: Sequence[str], parameters: object = None
+) -> dict[str, int]:
+    """Validate period parameters keyed by requested indicator name."""
+    if parameters is None:
+        supplied: Mapping[object, object] = {}
+    elif isinstance(parameters, Mapping):
+        supplied = parameters
+    else:
+        raise AnalyticsInputError("parameters must map indicator names to periods")
+
+    normalized: dict[str, int] = {}
+    requested = set(indicators)
+    for name, period in supplied.items():
+        indicator = validate_enum(name, name="indicator parameter", choices=INDICATORS)
+        if indicator not in requested:
+            raise AnalyticsInputError(
+                f"parameters include unrequested indicator: {indicator}"
+            )
+        if indicator in normalized:
+            raise AnalyticsInputError(
+                f"parameters contain duplicate indicator: {indicator}"
+            )
+        maximum = ANALYTICS_CONFIG.indicator_warmup_limit
+        if (
+            isinstance(period, bool)
+            or not isinstance(period, int)
+            or not 1 <= period <= maximum
+        ):
+            raise AnalyticsInputError(
+                f"{indicator} period must be an integer from 1 to {maximum}"
+            )
+        normalized[indicator] = period
+    return normalized
