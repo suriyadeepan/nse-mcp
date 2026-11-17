@@ -9,4 +9,5 @@
 - **Context management:** Preserve essential decisions and progress. Summarize before context exhaustion.
 - **Execution:** Inspect → Plan → Implement → Validate. Avoid unnecessary intermediate steps.
 - **Testing:** Run relevant tests only. Report actual results and failures; never fabricate success.
+- **Python execution:** Use the repository's local `uv` environment for all Python commands, including tests (for example, `uv run pytest ...`).
 - **Final report:** Summarize changes, affected files, test results, and blockers in 3–5 bullets.
