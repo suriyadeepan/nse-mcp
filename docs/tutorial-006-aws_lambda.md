@@ -1,6 +1,6 @@
 # Tutorial 006: Upload the processed dataset to S3
 
-This tutorial covers the implemented dataset upload and DuckDB-to-S3 development steps (T1–T3). Lambda provisioning and remote MCP access are still TODOs.
+This tutorial covers the implemented dataset upload, DuckDB-to-S3 development, and partition pruning steps (T1–T4). Lambda provisioning and remote MCP access are still TODOs.
 
 Run these commands from the repository root. Configure AWS CLI credentials and set the bucket name in `terraform/terraform.tfvars` (or pass it as a Terraform variable). The configured identity needs permission to manage the S3 bucket and upload objects.
 
@@ -49,3 +49,14 @@ uv run python -m scripts.query_s3_summary \
 ```
 
 The local connection uses DuckDB's `credential_chain`, which reads AWS CLI credentials. The deployed Lambda will use that same provider with its execution-role credentials.
+
+## Verify partition pruning
+
+Run a filtered query for one symbol and month. It checks that returned partition values match the requested symbol, year, and month, then prints DuckDB's query plan so you can inspect the Parquet `File Filters`:
+
+```sh
+uv run python -m scripts.verify_s3_partitions \
+  --symbol RELIANCE \
+  --year 2026 \
+  --month 8
+```

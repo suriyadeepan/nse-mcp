@@ -12,7 +12,7 @@ Deploy the existing MCP server and DuckDB analytics layer to AWS Lambda using Te
   - **Depends on:** T1.
 - [x] **T3 — Read Parquet directly from S3 with DuckDB** — Update `src/server/data.py` to use DuckDB `httpfs` to read Parquet objects directly from S3; do not copy the dataset into Lambda `/tmp`. Select local or S3 data through trusted `PROCESSED_DATA_SOURCE` configuration. Support local development with AWS CLI credentials before Lambda is provisioned. After deployment, authenticate S3 reads with the Lambda execution-role credentials.
   - **Depends on:** T1, T2.
-- [ ] **T4 — Prune partition reads** — Ensure analytics queries filter by symbol, year, and month so DuckDB can prune partitions; verify symbol and date filtering returns correct results.
+- [x] **T4 — Prune partition reads** — Ensure analytics queries filter by symbol, year, and month so DuckDB can prune partitions; verify symbol and date filtering returns correct results with `scripts/verify_s3_partitions.py` and inspect DuckDB's file filters.
   - **Depends on:** T3.
 - [ ] **T5 — Make the server Lambda compatible** — Update `src/server/main.py` to expose the existing MCP server through Lambda-compatible ASGI handling and Streamable HTTP.
   - **Depends on:** T3.
@@ -38,7 +38,7 @@ Deploy the existing MCP server and DuckDB analytics layer to AWS Lambda using Te
 | T1 | None | Establishes trusted bucket and prefix configuration. |
 | T2 | T1 | Provisions and fills the configured S3 location after AWS identity/access checks. |
 | T3 | T1, T2 | Implements and locally exercises S3 reads against the configured, populated dataset; execution-role credentials are used once deployment exists. |
-| T4 | T3 | Partition pruning applies to the direct S3 reader and its queries. |
+| T4 | T3 | Partition pruning applies to the direct S3 reader; the verification script checks requested partition values and exposes DuckDB's file filters. |
 | T5 | T3 | Wraps the existing server after its data path supports S3. |
 | T6 | T4, T5 | Packages the finished query path and Lambda-compatible server. |
 | T7 | T1, T3 | IAM must grant access to the configured prefix and support the reader's execution-role authentication. |
@@ -55,7 +55,7 @@ The audit found no circular dependency. Local DuckDB-to-S3 development happens i
 - `src/server/config.py` — trusted S3 bucket and dataset prefix settings (T1).
 - `scripts/upload_dataset.sh`, `data/processed/` — full dataset upload and partition layout (T2).
 - `src/server/config.py`, `src/server/data.py` — trusted local/S3 source selection, DuckDB `httpfs`, local AWS CLI credentials, deployed execution-role credentials, and direct S3 reads (T3).
-- Existing analytics query implementation and `tests/` — partition pruning and symbol/date result verification (T4).
+- Existing analytics query implementation and `scripts/verify_s3_partitions.py` — partition pruning and symbol/date result verification (T4).
 - `src/server/main.py` — Lambda-compatible ASGI and Streamable HTTP entry point (T5).
 - `requirements-lambda.txt`, `Dockerfile.lambda`, `scripts/deploy_lambda.sh` — Lambda runtime dependencies and package build (T6).
 - `terraform/iam.tf` — least-privilege Lambda S3 and CloudWatch permissions (T7).
