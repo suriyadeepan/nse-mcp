@@ -4,6 +4,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Literal, TypedDict
 
+import duckdb
 from pydantic import BaseModel, ConfigDict, Field
 
 from .config import ANALYTICS_CONFIG
@@ -196,8 +197,12 @@ class AnalyticsDataError(AnalyticsError):
 def _available_symbols() -> frozenset[str]:
     """Read the allowlist from configured processed Parquet files."""
     try:
-        return frozenset(list_symbols(ANALYTICS_CONFIG.processed_data_dir))
-    except OSError as exc:
+        return frozenset(
+            list_symbols(
+                ANALYTICS_CONFIG.processed_data_dir, config=ANALYTICS_CONFIG
+            )
+        )
+    except (OSError, duckdb.Error, ValueError) as exc:
         raise AnalyticsDataError("processed analytics data is unavailable") from exc
 
 

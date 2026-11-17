@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import duckdb
 
 from .config import ANALYTICS_CONFIG
+from .data import connect_duckdb, parquet_glob
 from .queries import (
     BARS_IN_RANGE_SQL,
     COMPARE_SYMBOLS_SQL,
@@ -140,20 +141,14 @@ class CompareSymbolsResult(TypedDict):
 
 
 def _parquet_glob() -> str:
-    return str(ANALYTICS_CONFIG.processed_data_dir / "**" / "*.parquet")
+    return parquet_glob(ANALYTICS_CONFIG)
 
 
 def _query_rows(query: str, params: list[object]) -> list[dict[str, object]]:
     """Execute a predefined query with the shared DuckDB resource limits."""
     connection = None
     try:
-        connection = duckdb.connect(
-            database=":memory:",
-            config={
-                "memory_limit": ANALYTICS_CONFIG.duckdb_memory_limit,
-                "threads": str(ANALYTICS_CONFIG.duckdb_threads),
-            },
-        )
+        connection = connect_duckdb(ANALYTICS_CONFIG)
         return connection.sql(query, params=params).to_arrow_table().to_pylist()
     except duckdb.Error as exc:
         raise AnalyticsDataError(

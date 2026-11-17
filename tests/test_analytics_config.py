@@ -2,7 +2,7 @@
 
 import duckdb
 
-from src.server.config import ANALYTICS_CONFIG, AnalyticsConfig
+from src.server.config import ANALYTICS_CONFIG, AnalyticsConfig, load_analytics_config
 
 
 def test_analytics_defaults_follow_processed_data_conventions():
@@ -28,6 +28,25 @@ def test_analytics_configuration_is_immutable():
         pass
     else:
         raise AssertionError("analytics configuration should be immutable")
+
+
+def test_s3_dataset_location_comes_from_deployment_configuration():
+    config = load_analytics_config(
+        {
+            "PROCESSED_DATA_S3_BUCKET": "market-data-demo",
+            "PROCESSED_DATA_S3_PREFIX": "datasets/processed",
+        }
+    )
+
+    assert config.processed_data_s3_bucket == "market-data-demo"
+    assert config.processed_data_s3_prefix == "datasets/processed"
+
+
+def test_s3_dataset_location_uses_configured_bucket_and_processed_prefix():
+    config = load_analytics_config({})
+
+    assert config.processed_data_s3_bucket == "nse-mcp-data"
+    assert config.processed_data_s3_prefix == "data/processed"
 
 
 def test_duckdb_dependency_can_open_configured_connection():
