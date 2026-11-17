@@ -3,11 +3,11 @@
 import argparse
 import logging
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server import MCPServer
 
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("kite-mcp")
+mcp = MCPServer("kite-mcp")
 app = mcp.streamable_http_app()
 
 
