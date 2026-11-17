@@ -22,6 +22,22 @@ from .validation import (
 )
 
 logger = logging.getLogger(__name__)
+MAX_MCP_RESULT_ROWS = 30
+
+
+def _cap_result_rows(value: Any) -> Any:
+    """Limit every row-like list in a tool result to the MCP response cap."""
+    if isinstance(value, list):
+        return [_cap_result_rows(row) for row in value[:MAX_MCP_RESULT_ROWS]]
+    if isinstance(value, dict):
+        bounded = {key: _cap_result_rows(item) for key, item in value.items()}
+        if "returned_count" in bounded:
+            for row_key in ("bars", "values"):
+                if isinstance(bounded.get(row_key), list):
+                    bounded["returned_count"] = len(bounded[row_key])
+                    break
+        return bounded
+    return value
 
 
 @dataclass(frozen=True)
@@ -37,7 +53,7 @@ def _invoke(
 ) -> Any:
     """Call an analytics function and expose safe, consistent tool errors."""
     try:
-        return handler(**arguments.model_dump())
+        return _cap_result_rows(handler(**arguments.model_dump()))
     except AnalyticsError as exc:
         raise ToolError(exc.message) from exc
     except Exception as exc:

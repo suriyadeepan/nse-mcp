@@ -9,6 +9,7 @@ dependencies = [
     "jsonschema>=4.23,<5",
     "mcp>=2,<3",
     "openai>=1.0",
+    "tiktoken>=0.9",
     "polars>=2.1.0",
     "pyarrow>=26.0.1",
 ]

@@ -2,7 +2,9 @@
 
 import asyncio
 import json
+import os
 import socket
+import sys
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any, AsyncIterator
@@ -13,6 +15,9 @@ from mcp.server import MCPServer
 from server.tools import register_tools
 
 from client.agent import Agent
+from client.agent import MAX_CONVERSATION_TOOL_RESULT_TOKENS
+from client.agent import _token_encoding
+from client import main as client_main
 from client.discovery import (
     MCPConnectionError,
     connect_to_server,
@@ -110,6 +115,41 @@ async def test_connection_failure_has_clear_non_sensitive_message():
 
     assert "secret" not in str(error.value)
     assert "hidden" not in str(error.value)
+
+
+def test_cli_passes_http_endpoint_prompt_and_prints_answer(monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(sys, "argv", [
+        "kite-mcp-client",
+        "--server",
+        "http://127.0.0.1:9000/mcp",
+        "--prompt",
+        "Show me the latest price",
+        "--model",
+        "test-model",
+    ])
+    monkeypatch.setattr(
+        "client.agent.run",
+        lambda server, prompt, model: calls.append((server, prompt, model)) or "Price: 123",
+    )
+
+    client_main.main()
+
+    assert calls == [
+        ("http://127.0.0.1:9000/mcp", "Show me the latest price", "test-model")
+    ]
+    assert capsys.readouterr().out == "Price: 123\n"
+
+
+def test_openai_client_reads_api_key_from_environment(monkeypatch):
+    from openai import AsyncOpenAI
+
+    monkeypatch.setenv("OPENAI_API_KEY", "unit-test-key")
+    client = AsyncOpenAI()
+    try:
+        assert client.api_key == os.environ["OPENAI_API_KEY"]
+    finally:
+        asyncio.run(client.close())
 
 
 @pytest.mark.anyio
@@ -290,3 +330,35 @@ async def test_agent_handles_multiple_calls_and_obeys_round_limit():
     assert executions == ["A", "B", "C"]
     assert len(fake_openai.requests) == 3
     assert fake_openai.requests[-1]["tool_choice"] == "none"
+
+
+@pytest.mark.anyio
+async def test_agent_caps_cumulative_tool_result_tokens_sent_to_openai():
+    mcp_server = MCPServer("large-results")
+
+    @mcp_server.tool(name="large_lookup", description="Return a large record.")
+    def large_lookup(query: str) -> str:
+        return query * 100_000
+
+    fake_openai = FakeOpenAI(
+        [
+            completion(tool_calls=[tool_call("call-1", "large_lookup", '{"query":"A"}')]),
+            completion(tool_calls=[tool_call("call-2", "large_lookup", '{"query":"B"}')]),
+            completion("The results were shortened."),
+        ]
+    )
+    async with serve_mcp(mcp_server) as url:
+        agent = Agent(url, openai_client=fake_openai, max_tool_rounds=2)
+        answer = await agent.run("Fetch two records")
+
+    tool_messages = [
+        message
+        for message in fake_openai.requests[-1]["messages"]
+        if message["role"] == "tool"
+    ]
+    encoding = _token_encoding(agent.model)
+    token_count = sum(len(encoding.encode(message["content"])) for message in tool_messages)
+    assert answer == "The results were shortened."
+    assert all(len(encoding.encode(message["content"])) <= 12_000 for message in tool_messages)
+    assert token_count <= MAX_CONVERSATION_TOOL_RESULT_TOKENS
+    assert any(json.loads(message["content"]).get("truncated") for message in tool_messages)

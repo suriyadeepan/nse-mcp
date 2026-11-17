@@ -194,6 +194,37 @@ async def test_registered_analytics_tools_return_structured_empty_results(monkey
 
 
 @pytest.mark.anyio
+async def test_mcp_tool_results_are_capped_at_thirty_rows(monkeypatch):
+    monkeypatch.setattr(
+        server_tools.analytics,
+        "get_bars",
+        lambda **kwargs: {
+            "bars": [
+                {
+                    "timestamp": "2024-01-01T00:00:00Z",
+                    "open": 1.0,
+                    "high": 2.0,
+                    "low": 0.5,
+                    "close": 1.5,
+                    "volume": 10,
+                }
+                for index in range(45)
+            ],
+            "returned_count": 45,
+        },
+    )
+
+    async with Client(server_main.mcp) as client:
+        result = await client.call_tool(
+            "get_bars", {"arguments": TOOL_ARGUMENTS["get_bars"]}
+        )
+
+    assert result.is_error is False
+    assert len(result.structured_content["bars"]) == 30
+    assert result.structured_content["returned_count"] == 30
+
+
+@pytest.mark.anyio
 async def test_registered_tool_rejects_invalid_arguments_before_execution(monkeypatch):
     invoked = False
 

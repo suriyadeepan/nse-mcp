@@ -6,6 +6,7 @@ import os
 from typing import Any
 
 from openai import AsyncOpenAI
+import tiktoken
 
 from client.discovery import (
     DEFAULT_SERVER_URL,
@@ -16,6 +17,39 @@ from client.discovery import (
     discover_tools,
     to_openai_tools,
 )
+
+
+MAX_TOOL_RESULT_TOKENS = 12_000
+MAX_CONVERSATION_TOOL_RESULT_TOKENS = 24_000
+
+
+def _token_encoding(model: str) -> Any:
+    try:
+        return tiktoken.encoding_for_model(model)
+    except KeyError:
+        return tiktoken.get_encoding("cl100k_base")
+
+
+def _serialize_tool_result(result: Any, encoding: Any, token_budget: int) -> tuple[str, int]:
+    if token_budget <= 0:
+        return "", 0
+    serialized = json.dumps(result, ensure_ascii=False, default=str)
+    tokens = encoding.encode(serialized)
+    if len(tokens) <= token_budget:
+        return serialized, len(tokens)
+
+    # Reserve room for the JSON wrapper and truncation marker.
+    preview_tokens = max(0, token_budget - 24)
+    while preview_tokens >= 0:
+        preview = encoding.decode(tokens[:preview_tokens])
+        content = json.dumps(
+            {"truncated": True, "preview": preview}, ensure_ascii=False
+        )
+        content_tokens = len(encoding.encode(content))
+        if content_tokens <= token_budget:
+            return content, content_tokens
+        preview_tokens -= max(1, content_tokens - token_budget)
+    return "", 0
 
 
 class Agent:
@@ -49,6 +83,8 @@ class Agent:
             await self.connect()
 
         messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
+        encoding = _token_encoding(self.model)
+        remaining_result_tokens = MAX_CONVERSATION_TOOL_RESULT_TOKENS
         async with connect_to_server(self.server_url) as mcp_client:
             for _ in range(self.max_tool_rounds):
                 response = await client.chat.completions.create(
@@ -98,11 +134,17 @@ class Agent:
                     except (ToolArgumentError, ToolExecutionError) as exc:
                         result = {"error": str(exc)}
 
+                    result_content, used_tokens = _serialize_tool_result(
+                        result,
+                        encoding,
+                        min(MAX_TOOL_RESULT_TOKENS, remaining_result_tokens),
+                    )
+                    remaining_result_tokens = max(0, remaining_result_tokens - used_tokens)
                     messages.append(
                         {
                             "role": "tool",
                             "tool_call_id": item.id,
-                            "content": json.dumps(result, ensure_ascii=False, default=str),
+                            "content": result_content,
                         }
                     )
 

@@ -6,5 +6,5 @@
 4. [x] Implement the OpenAI agent loop so the model selects tools and generates arguments from the user's question, receives MCP results, and produces a readable final answer.
 5. [x] Support multiple tool calls and cap the tool-calling loop at a configurable maximum of 2–3 rounds.
 6. [x] Read OpenAI credentials from environment variables and ensure logs and errors never expose API keys or credentials.
-7. [x] Update `src/client/main.py` for CLI interaction with the HTTP server endpoint and create `tests/test_client.py` covering HTTP discovery, schema conversion, validation, agent tool calls, round limits, and failure handling.
-8. [x] Verify all six current tools are discovered over HTTP and available to OpenAI, then run client tests and confirm existing MCP server and analytics tests remain unaffected; adding a server tool must require no client code changes.
+7. [x] Update `src/client/main.py` for CLI interaction; test client behavior, including the 12,000-token per-result and 24,000-token per-conversation MCP result limits; verify adding server tools requires no client changes.
+8. [x] Cap every row list returned by MCP tools at 30 rows and test the server-side response limit.
