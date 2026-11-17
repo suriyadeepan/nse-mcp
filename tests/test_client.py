@@ -132,6 +132,11 @@ def test_cli_passes_http_endpoint_prompt_and_prints_answer(monkeypatch, capsys):
         "client.agent.run",
         lambda server, prompt, model: calls.append((server, prompt, model)) or "Price: 123",
     )
+    monkeypatch.setattr(
+        client_main,
+        "_initialize_langfuse",
+        lambda: SimpleNamespace(flush=lambda: None),
+    )
 
     client_main.main()
 

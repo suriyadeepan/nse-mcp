@@ -6,16 +6,16 @@ Integrate Langfuse into the local MCP client and OpenAI agent to inspect complet
 
 ## TODO
 
-- [x] Confirm Langfuse Cloud is accessible using environment credentials; never read, print, or commit `.env` contents.
-- [ ] Initialize Langfuse in `src/client/main.py` and flush it cleanly when the client exits.
-- [ ] Trace each complete agent execution, including the user question and final answer.
-- [ ] Record OpenAI model calls and responses, including latency and token usage when available.
-- [ ] Record MCP tool names, generated arguments, executions, and results.
-- [ ] Organize each execution as a parent trace with clear child spans for model calls and tool calls.
-- [ ] Filter or redact API keys, bearer tokens, and all other secrets from traces, logs, and errors.
-- [ ] Add `tests/test_langfuse.py` covering trace creation and secret filtering.
-- [ ] Verify a complete execution creates a trace showing OpenAI calls and MCP tool executions, with tool inputs/outputs and available latency/token usage.
-- [ ] Verify no secrets appear in traces or logs, and existing client, server, and analytics functionality remains unaffected.
+- [x] **T1 — Confirm Langfuse Cloud authentication:** Use environment credentials; never read, print, or commit `.env` contents.
+- [x] **T2 — Initialize and flush Langfuse:** Set up Langfuse in `src/client/main.py` and flush it cleanly when the client exits.
+- [ ] **T3 — Trace agent executions:** Capture each complete execution, including the user question and final answer.
+- [ ] **T4 — Record OpenAI calls:** Capture model requests and responses, including latency and token usage when available.
+- [ ] **T5 — Record MCP tool calls:** Capture tool names, generated arguments, executions, and results.
+- [ ] **T6 — Organize trace hierarchy:** Give each execution a parent trace with child spans for model calls and tool calls.
+- [ ] **T7 — Filter secrets:** Filter or redact API keys, bearer tokens, and other secrets from traces, logs, and errors.
+- [ ] **T8 — Add Langfuse tests:** Cover trace creation and secret filtering in `tests/test_langfuse.py`.
+- [ ] **T9 — Verify complete traces:** Confirm an execution trace shows OpenAI calls and MCP tool executions, with tool inputs/outputs and available latency/token usage.
+- [ ] **T10 — Verify safety and regression behavior:** Confirm no secrets appear in traces or logs and existing client, server, and analytics functionality remains unaffected.
 
 ## Files
 

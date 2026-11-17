@@ -3,6 +3,17 @@
 import argparse
 
 
+def _initialize_langfuse():
+    """Load environment settings before creating the Langfuse client."""
+    from dotenv import load_dotenv
+
+    load_dotenv()
+
+    from langfuse import get_client
+
+    return get_client()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="kite-mcp-client")
     parser.add_argument(
@@ -17,12 +28,16 @@ def main() -> None:
     if not args.prompt:
         parser.error("--prompt is required")
 
-    from client.agent import run
+    langfuse = _initialize_langfuse()
 
     try:
+        from client.agent import run
+
         answer = run(args.server, args.prompt, model=args.model or "")
     except ConnectionError as exc:
         parser.exit(1, f"kite-mcp-client: error: {exc}\n")
+    finally:
+        langfuse.flush()
     print(answer)
 
 
