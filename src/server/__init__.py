@@ -1,3 +1,3 @@
 """Market data MCP server package."""
 
-__all__ = ["data", "main", "tools"]
+__all__ = ["config", "data", "main", "tools"]
