@@ -6,7 +6,7 @@ Integrate Langfuse into the local MCP client and OpenAI agent to inspect complet
 
 ## TODO
 
-- [ ] Confirm Langfuse Cloud is accessible using environment credentials; never read, print, or commit `.env` contents.
+- [x] Confirm Langfuse Cloud is accessible using environment credentials; never read, print, or commit `.env` contents.
 - [ ] Initialize Langfuse in `src/client/main.py` and flush it cleanly when the client exits.
 - [ ] Trace each complete agent execution, including the user question and final answer.
 - [ ] Record OpenAI model calls and responses, including latency and token usage when available.

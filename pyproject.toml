@@ -12,6 +12,8 @@ dependencies = [
     "tiktoken>=0.9",
     "polars>=2.1.0",
     "pyarrow>=26.0.1",
+    "python-dotenv>=1.0",
+    "langfuse>=5.2.0",
 ]
 
 [project.scripts]
