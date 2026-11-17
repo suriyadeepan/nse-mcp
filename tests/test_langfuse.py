@@ -1,7 +1,9 @@
 """Tests for Langfuse client lifecycle setup."""
 
 import sys
-from contextlib import contextmanager
+import json
+from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -180,3 +182,94 @@ async def test_mcp_tool_observation_records_name_arguments_and_result(monkeypatc
             "output": {"price": 190.0},
         }
     ]
+
+
+@pytest.mark.anyio
+async def test_model_and_tool_observations_are_children_of_agent_trace(monkeypatch):
+    active_observation = ContextVar("active_observation", default=None)
+    observations = []
+
+    class FakeLangfuse:
+        @contextmanager
+        def start_as_current_observation(self, **kwargs):
+            observation_id = len(observations)
+            observation = {
+                "id": observation_id,
+                "parent_id": active_observation.get(),
+                **kwargs,
+            }
+            observations.append(observation)
+            token = active_observation.set(observation_id)
+            try:
+                yield SimpleNamespace(update=lambda **values: observation.update(values))
+            finally:
+                active_observation.reset(token)
+
+    langfuse = ModuleType("langfuse")
+    langfuse.get_client = lambda: FakeLangfuse()
+    monkeypatch.setitem(sys.modules, "langfuse", langfuse)
+
+    tool_call = SimpleNamespace(
+        id="call-1",
+        function=SimpleNamespace(name="lookup", arguments='{"symbol":"ABC"}'),
+    )
+    responses = iter(
+        [
+            SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(content=None, tool_calls=[tool_call])
+                    )
+                ],
+                usage=None,
+            ),
+            SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(content="Done", tool_calls=[])
+                    )
+                ],
+                usage=None,
+            ),
+        ]
+    )
+
+    class FakeOpenAI:
+        chat = SimpleNamespace(completions=SimpleNamespace(create=None))
+
+    async def create(**kwargs):
+        return next(responses)
+
+    openai_client = FakeOpenAI()
+    openai_client.chat.completions.create = create
+
+    @asynccontextmanager
+    async def connect_to_server(_server_url):
+        yield object()
+
+    async def call_tool(_client, _tool, arguments):
+        assert arguments == {"symbol": "ABC"}
+        return {"matches": 1}
+
+    monkeypatch.setattr(client_agent, "connect_to_server", connect_to_server)
+    monkeypatch.setattr(client_agent, "call_tool", call_tool)
+    monkeypatch.setattr(client_agent, "_token_encoding", lambda _model: object())
+    monkeypatch.setattr(
+        client_agent,
+        "_serialize_tool_result",
+        lambda result, _encoding, _budget: (json.dumps(result), 2),
+    )
+    agent = Agent(openai_client=openai_client)
+    agent.tools = {"lookup": object()}
+
+    assert await agent.run("Find ABC") == "Done"
+
+    root = observations[0]
+    assert root["name"] == "agent-execution"
+    child_observations = observations[1:]
+    assert [item["name"] for item in child_observations] == [
+        "openai-chat-completion",
+        "mcp-tool:lookup",
+        "openai-chat-completion",
+    ]
+    assert all(item["parent_id"] == root["id"] for item in child_observations)
