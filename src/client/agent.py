@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+from time import perf_counter
 from typing import Any
 
 from openai import AsyncOpenAI
@@ -78,6 +79,87 @@ class Agent:
         self.openai_tools = to_openai_tools(list(self.tools.values()))
         return self.tools
 
+    async def _request_completion(self, client: Any, **request: Any) -> Any:
+        """Call OpenAI and record the request, response, latency, and usage."""
+        from langfuse import get_client
+
+        langfuse = get_client()
+        started = perf_counter()
+        with langfuse.start_as_current_observation(
+            as_type="generation",
+            name="openai-chat-completion",
+            model=request["model"],
+            input={key: value for key, value in request.items() if key != "model"},
+        ) as generation:
+            response = await client.chat.completions.create(**request)
+            latency_ms = (perf_counter() - started) * 1000
+            message = response.choices[0].message
+            output = {
+                "content": message.content,
+                "tool_calls": [
+                    {
+                        "id": call.id,
+                        "name": call.function.name,
+                        "arguments": call.function.arguments,
+                    }
+                    for call in (message.tool_calls or [])
+                ],
+            }
+            update: dict[str, Any] = {
+                "output": output,
+                "metadata": {"latency_ms": latency_ms},
+            }
+            usage = getattr(response, "usage", None)
+            if usage is not None:
+                usage_details = {
+                    key: value
+                    for key, value in {
+                        "input": getattr(usage, "prompt_tokens", None),
+                        "output": getattr(usage, "completion_tokens", None),
+                        "total": getattr(usage, "total_tokens", None),
+                    }.items()
+                    if value is not None
+                }
+                if usage_details:
+                    update["usage_details"] = usage_details
+            generation.update(**update)
+        return response
+
+    async def _invoke_tool(
+        self,
+        client: Any,
+        name: str,
+        arguments: Any,
+    ) -> Any:
+        """Invoke an MCP tool and record its name, arguments, and result."""
+        from langfuse import get_client
+
+        langfuse = get_client()
+        with langfuse.start_as_current_observation(
+            as_type="tool",
+            name=f"mcp-tool:{name}",
+            input={"arguments": arguments},
+        ) as observation:
+            try:
+                tool = self.tools.get(name)
+                if tool is None:
+                    raise ToolExecutionError(
+                        f"OpenAI selected unknown MCP tool {name!r}."
+                    )
+                if isinstance(arguments, str):
+                    try:
+                        arguments = json.loads(arguments)
+                    except (TypeError, json.JSONDecodeError) as exc:
+                        raise ToolArgumentError(
+                            f"Invalid JSON arguments for MCP tool {name!r}."
+                        ) from exc
+                result = await call_tool(client, tool, arguments)
+            except (ToolArgumentError, ToolExecutionError) as exc:
+                observation.update(output={"error": str(exc)})
+                raise
+            observation.update(output=result)
+            return result
+
     async def _run_with_client(self, prompt: str, client: Any) -> str:
         if not self.tools:
             await self.connect()
@@ -87,7 +169,8 @@ class Agent:
         remaining_result_tokens = MAX_CONVERSATION_TOOL_RESULT_TOKENS
         async with connect_to_server(self.server_url) as mcp_client:
             for _ in range(self.max_tool_rounds):
-                response = await client.chat.completions.create(
+                response = await self._request_completion(
+                    client,
                     model=self.model,
                     messages=messages,
                     tools=self.openai_tools,
@@ -119,18 +202,9 @@ class Agent:
                 for item in tool_calls:
                     name = item.function.name
                     try:
-                        tool = self.tools.get(name)
-                        if tool is None:
-                            raise ToolExecutionError(
-                                f"OpenAI selected unknown MCP tool {name!r}."
-                            )
-                        try:
-                            arguments = json.loads(item.function.arguments)
-                        except (TypeError, json.JSONDecodeError) as exc:
-                            raise ToolArgumentError(
-                                f"Invalid JSON arguments for MCP tool {name!r}."
-                            ) from exc
-                        result = await call_tool(mcp_client, tool, arguments)
+                        result = await self._invoke_tool(
+                            mcp_client, name, item.function.arguments
+                        )
                     except (ToolArgumentError, ToolExecutionError) as exc:
                         result = {"error": str(exc)}
 
@@ -149,7 +223,8 @@ class Agent:
                     )
 
             # Ask for a final answer after the configured number of tool rounds.
-            response = await client.chat.completions.create(
+            response = await self._request_completion(
+                client,
                 model=self.model,
                 messages=messages,
                 tools=self.openai_tools,

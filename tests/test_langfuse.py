@@ -7,6 +7,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from client import main as client_main
+from client import agent as client_agent
 from client.agent import Agent
 
 
@@ -90,4 +91,92 @@ async def test_agent_trace_records_question_and_final_answer(monkeypatch):
             "input": {"question": "What is the answer?"},
         },
         {"output": {"answer": "The answer is 42."}},
+    ]
+
+
+@pytest.mark.anyio
+async def test_openai_generation_records_request_response_latency_and_usage(monkeypatch):
+    observations = []
+
+    class FakeLangfuse:
+        @contextmanager
+        def start_as_current_observation(self, **kwargs):
+            observation = dict(kwargs)
+            observations.append(observation)
+            yield SimpleNamespace(update=lambda **values: observation.update(values))
+
+    langfuse = ModuleType("langfuse")
+    langfuse.get_client = lambda: FakeLangfuse()
+    monkeypatch.setitem(sys.modules, "langfuse", langfuse)
+    response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(content="answer", tool_calls=[])
+            )
+        ],
+        usage=SimpleNamespace(prompt_tokens=12, completion_tokens=4, total_tokens=16),
+    )
+
+    class FakeOpenAI:
+        chat = SimpleNamespace(completions=SimpleNamespace(create=None))
+
+    async def create(**kwargs):
+        return response
+
+    client = FakeOpenAI()
+    client.chat.completions.create = create
+    request = {"model": "test-model", "messages": [{"role": "user", "content": "hi"}]}
+
+    result = await Agent()._request_completion(client, **request)
+
+    assert result is response
+    assert observations[0]["as_type"] == "generation"
+    assert observations[0]["model"] == "test-model"
+    assert observations[0]["input"] == {"messages": request["messages"]}
+    assert observations[0]["output"] == {"content": "answer", "tool_calls": []}
+    assert observations[0]["metadata"]["latency_ms"] >= 0
+    assert observations[0]["usage_details"] == {
+        "input": 12,
+        "output": 4,
+        "total": 16,
+    }
+
+
+@pytest.mark.anyio
+async def test_mcp_tool_observation_records_name_arguments_and_result(monkeypatch):
+    observations = []
+
+    class FakeLangfuse:
+        @contextmanager
+        def start_as_current_observation(self, **kwargs):
+            observation = dict(kwargs)
+            observations.append(observation)
+            yield SimpleNamespace(update=lambda **values: observation.update(values))
+
+    langfuse = ModuleType("langfuse")
+    langfuse.get_client = lambda: FakeLangfuse()
+    monkeypatch.setitem(sys.modules, "langfuse", langfuse)
+    tool = object()
+
+    async def call_tool(client, discovered_tool, arguments):
+        assert discovered_tool is tool
+        assert arguments == {"symbol": "AAPL"}
+        return {"price": 190.0}
+
+    monkeypatch.setattr(client_agent, "call_tool", call_tool)
+    agent = Agent()
+    agent.tools = {"lookup_price": tool}
+
+    result = await agent._invoke_tool(
+        object(), "lookup_price", '{"symbol":"AAPL"}'
+    )
+
+    assert result == {"price": 190.0}
+    assert observations == [
+        {
+            "as_type": "tool",
+            "name": "mcp-tool:lookup_price",
+            "input": {"arguments": '{"symbol":"AAPL"}'},
+            "output": {"price": 190.0},
+        }
     ]
