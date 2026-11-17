@@ -2,7 +2,9 @@
 
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime, timedelta, timezone
-from typing import TypedDict
+from typing import Annotated, Literal, TypedDict
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from .config import ANALYTICS_CONFIG
 from .data import list_symbols
@@ -10,6 +12,152 @@ from .data import list_symbols
 INDICATORS = ("SMA", "EMA", "RSI", "ATR")
 VOLUME_BUCKETS = ("hourly", "daily")
 COMPARISON_INTERVALS = ("daily",)
+
+IndicatorName = Literal["SMA", "EMA", "RSI", "ATR"]
+IndicatorPeriod = Annotated[
+    int,
+    Field(
+        ge=1,
+        le=ANALYTICS_CONFIG.indicator_warmup_limit,
+        description="Period from 1 through the configured indicator warm-up limit.",
+    ),
+]
+
+
+class ToolArguments(BaseModel):
+    """Base for strict, documented MCP tool argument schemas."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class GetBarsArguments(ToolArguments):
+    """Arguments for retrieving ordered OHLCV candles in a UTC time range."""
+
+    symbol: str = Field(min_length=1, description="Listed market symbol to query.")
+    start_datetime: datetime = Field(
+        description="Inclusive ISO-8601 start timestamp with a timezone offset."
+    )
+    end_datetime: datetime = Field(
+        description="Inclusive ISO-8601 end timestamp with a timezone offset."
+    )
+    limit: int = Field(
+        gt=0,
+        le=ANALYTICS_CONFIG.max_returned_rows,
+        description=(
+            "Maximum number of candles to return; must not exceed the configured cap."
+        ),
+    )
+
+
+class IntradayStatsArguments(ToolArguments):
+    """Arguments for summarizing one symbol's session on an IST calendar date."""
+
+    symbol: str = Field(min_length=1, description="Listed market symbol to summarize.")
+    trading_date: date = Field(
+        description="IST trading date in YYYY-MM-DD format."
+    )
+
+
+class PriceExtremesArguments(ToolArguments):
+    """Arguments for finding the highest high and lowest low in a UTC range."""
+
+    symbol: str = Field(min_length=1, description="Listed market symbol to query.")
+    start_datetime: datetime = Field(
+        description="Inclusive ISO-8601 start timestamp with a timezone offset."
+    )
+    end_datetime: datetime = Field(
+        description="Inclusive ISO-8601 end timestamp with a timezone offset."
+    )
+
+
+class VolumeStatsArguments(ToolArguments):
+    """Arguments for summarizing candle volumes and time-bucket totals."""
+
+    symbol: str = Field(min_length=1, description="Listed market symbol to summarize.")
+    start_datetime: datetime = Field(
+        description="Inclusive ISO-8601 start timestamp with a timezone offset."
+    )
+    end_datetime: datetime = Field(
+        description="Inclusive ISO-8601 end timestamp with a timezone offset."
+    )
+    bucket: Literal["hourly", "daily"] = Field(
+        description="Aggregate volume into hourly or IST daily buckets."
+    )
+
+
+class ComputeIndicatorsArguments(ToolArguments):
+    """Arguments for calculating supported technical indicators."""
+
+    symbol: str = Field(min_length=1, description="Listed market symbol to analyze.")
+    start_datetime: datetime = Field(
+        description="Inclusive ISO-8601 start timestamp with a timezone offset."
+    )
+    end_datetime: datetime = Field(
+        description="Inclusive ISO-8601 end timestamp with a timezone offset."
+    )
+    indicators: list[IndicatorName] = Field(
+        min_length=1,
+        json_schema_extra={"uniqueItems": True},
+        description="One or more unique indicators: SMA, EMA, RSI, or ATR.",
+    )
+    parameters: dict[IndicatorName, IndicatorPeriod] | None = Field(
+        default=None,
+        description="Optional period per requested indicator; omitted periods use the configured default.",
+    )
+
+
+class CompareSymbolsArguments(ToolArguments):
+    """Arguments for comparing symbols over shared daily trading dates."""
+
+    symbols: list[Annotated[str, Field(min_length=1)]] = Field(
+        min_length=2,
+        max_length=ANALYTICS_CONFIG.max_returned_rows,
+        json_schema_extra={"uniqueItems": True},
+        description="Two or more distinct listed symbols, up to the configured result cap.",
+    )
+    start_datetime: datetime = Field(
+        description="Inclusive ISO-8601 start timestamp with a timezone offset."
+    )
+    end_datetime: datetime = Field(
+        description="Inclusive ISO-8601 end timestamp with a timezone offset."
+    )
+    interval: Literal["daily"] = Field(
+        default="daily", description="Comparison interval; only daily is supported."
+    )
+
+
+TOOL_DESCRIPTIONS: dict[str, str] = {
+    "get_bars": (
+        "Return ordered OHLCV candles for one symbol and an inclusive UTC time range."
+    ),
+    "intraday_stats": (
+        "Summarize a symbol's session on an IST date, including OHLC, volume, VWAP, "
+        "and returns."
+    ),
+    "get_price_extremes": (
+        "Find the highest high and lowest low, with their earliest timestamps, "
+        "in a UTC range."
+    ),
+    "get_volume_stats": (
+        "Summarize candle volumes and chronological hourly or daily IST bucket totals."
+    ),
+    "compute_indicators": (
+        "Calculate SMA, EMA, RSI, or ATR values with prior-candle warm-up "
+        "and no look-ahead."
+    ),
+    "compare_symbols": (
+        "Compare at least two symbols using daily metrics on their common trading dates."
+    ),
+}
+
+TOOL_ARGUMENT_MODELS: dict[str, type[ToolArguments]] = {
+    "get_bars": GetBarsArguments,
+    "intraday_stats": IntradayStatsArguments,
+    "get_price_extremes": PriceExtremesArguments,
+    "get_volume_stats": VolumeStatsArguments,
+    "compute_indicators": ComputeIndicatorsArguments,
+    "compare_symbols": CompareSymbolsArguments,
+}
 
 
 class AnalyticsErrorResult(TypedDict):
