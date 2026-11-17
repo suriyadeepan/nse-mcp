@@ -6,12 +6,13 @@ readme = "README.md"
 requires-python = ">=3.15"
 dependencies = [
     "duckdb>=1.5.6",
+    "mcp>=1.30,<2",
     "polars>=2.1.0",
     "pyarrow>=26.0.1",
 ]
 
 [project.scripts]
-kite-mcp = "kite_mcp:main"
+kite-mcp = "server.main:main"
 
 [build-system]
 requires = ["uv_build>=0.13.8,<0.14.0"]
