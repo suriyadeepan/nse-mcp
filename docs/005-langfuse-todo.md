@@ -12,8 +12,8 @@ Integrate Langfuse into the local MCP client and OpenAI agent to inspect complet
 - [x] **T4 — Record OpenAI calls:** Capture model requests and responses, including latency and token usage when available.
 - [x] **T5 — Record MCP tool calls:** Capture tool names, generated arguments, executions, and results.
 - [x] **T6 — Organize trace hierarchy:** Give each execution a parent trace with child spans for model calls and tool calls.
-- [ ] **T7 — Filter secrets:** Filter or redact API keys, bearer tokens, and other secrets from traces, logs, and errors.
-- [ ] **T8 — Add Langfuse tests:** Cover trace creation and secret filtering in `tests/test_langfuse.py`.
+- [x] **T7 — Filter secrets:** Filter or redact API keys, bearer tokens, and other secrets from traces, logs, and errors.
+- [x] **T8 — Add Langfuse tests:** Cover trace creation and secret filtering in `tests/test_langfuse.py`.
 - [ ] **T9 — Verify complete traces:** Confirm an execution trace shows OpenAI calls and MCP tool executions, with tool inputs/outputs and available latency/token usage.
 - [ ] **T10 — Verify safety and regression behavior:** Confirm no secrets appear in traces or logs and existing client, server, and analytics functionality remains unaffected.
 

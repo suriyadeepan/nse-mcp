@@ -10,7 +10,7 @@ import pytest
 
 from client import main as client_main
 from client import agent as client_agent
-from client.agent import Agent
+from client.agent import Agent, _redact_secrets
 
 
 def test_initialize_langfuse_loads_dotenv_before_client(monkeypatch):
@@ -273,3 +273,60 @@ async def test_model_and_tool_observations_are_children_of_agent_trace(monkeypat
         "openai-chat-completion",
     ]
     assert all(item["parent_id"] == root["id"] for item in child_observations)
+
+
+def test_secret_filter_redacts_nested_credentials():
+    payload = {
+        "authorization": "Bearer abc.def-123",
+        "request": [{"api_key": "key-123", "text": "using sk-proj-1234567890abcdef"}],
+        "error": "invalid token=supersecret",
+        "safe": "ordinary text",
+    }
+
+    redacted = _redact_secrets(payload)
+
+    assert redacted == {
+        "authorization": "[REDACTED]",
+        "request": [{"api_key": "[REDACTED]", "text": "using [REDACTED]"}],
+        "error": "invalid token=[REDACTED]",
+        "safe": "ordinary text",
+    }
+
+
+@pytest.mark.anyio
+async def test_openai_request_and_failure_trace_are_redacted(monkeypatch):
+    observations = []
+
+    class FakeLangfuse:
+        @contextmanager
+        def start_as_current_observation(self, **kwargs):
+            observation = dict(kwargs)
+            observations.append(observation)
+            yield SimpleNamespace(update=lambda **values: observation.update(values))
+
+    langfuse = ModuleType("langfuse")
+    langfuse.get_client = lambda: FakeLangfuse()
+    monkeypatch.setitem(sys.modules, "langfuse", langfuse)
+
+    class FakeOpenAI:
+        chat = SimpleNamespace(completions=SimpleNamespace(create=None))
+
+    async def create(**_kwargs):
+        raise RuntimeError("request failed with Bearer topsecret123")
+
+    client = FakeOpenAI()
+    client.chat.completions.create = create
+    with pytest.raises(RuntimeError, match=r"Bearer \[REDACTED\]") as error:
+        await Agent()._request_completion(
+            client,
+            model="test-model",
+            messages=[{"role": "user", "content": "api_key=supersecret"}],
+        )
+
+    assert "topsecret123" not in str(error.value)
+    assert observations[0]["input"] == {
+        "messages": [{"role": "user", "content": "api_key=[REDACTED]"}]
+    }
+    assert observations[0]["output"] == {
+        "error": "request failed with Bearer [REDACTED]"
+    }

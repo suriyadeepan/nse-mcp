@@ -35,7 +35,9 @@ def main() -> None:
 
         answer = run(args.server, args.prompt, model=args.model or "")
     except ConnectionError as exc:
-        parser.exit(1, f"kite-mcp-client: error: {exc}\n")
+        from client.agent import _redact_secrets
+
+        parser.exit(1, f"kite-mcp-client: error: {_redact_secrets(str(exc))}\n")
     finally:
         langfuse.flush()
     print(answer)

@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import re
 from time import perf_counter
 from typing import Any
 
@@ -22,6 +23,50 @@ from client.discovery import (
 
 MAX_TOOL_RESULT_TOKENS = 12_000
 MAX_CONVERSATION_TOOL_RESULT_TOKENS = 24_000
+_SECRET_PATTERNS = (
+    re.compile(r"(?i)\b(bearer\s+)[A-Za-z0-9._~+/=-]+"),
+    re.compile(
+        r"(?i)(\b(?:api[_-]?key|token|auth(?:orization)?|secret|password)\b\s*[:=]\s*[\"']?)[^\s,;\"']+"
+    ),
+    re.compile(r"\b(?:sk|pk)-(?:proj-)?[A-Za-z0-9_-]{12,}\b"),
+    re.compile(r"\b(?:sk|pk)-lf-[A-Za-z0-9_-]{8,}\b"),
+)
+
+
+def _redact_secrets(value: Any) -> Any:
+    """Redact credential-like strings recursively before logging or tracing."""
+    if isinstance(value, dict):
+        return {
+            key: "[REDACTED]"
+            if isinstance(key, str)
+            and re.search(
+                r"(?i)(?:api[_-]?key|token|auth(?:orization)?|secret|password)",
+                key,
+            )
+            else _redact_secrets(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_secrets(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_redact_secrets(item) for item in value)
+    if isinstance(value, str):
+        for pattern in _SECRET_PATTERNS:
+            value = pattern.sub(
+                lambda match: (match.group(1) if match.lastindex else "")
+                + "[REDACTED]",
+                value,
+            )
+        return value
+    return value
+
+
+def _safe_error(exc: Exception) -> Exception:
+    """Create a trace-safe error without retaining the original exception chain."""
+    try:
+        return type(exc)(str(_redact_secrets(str(exc))))
+    except Exception:
+        return RuntimeError(str(_redact_secrets(str(exc))))
 
 
 def _token_encoding(model: str) -> Any:
@@ -89,24 +134,31 @@ class Agent:
             as_type="generation",
             name="openai-chat-completion",
             model=request["model"],
-            input={key: value for key, value in request.items() if key != "model"},
+            input=_redact_secrets(
+                {key: value for key, value in request.items() if key != "model"}
+            ),
         ) as generation:
-            response = await client.chat.completions.create(**request)
+            try:
+                response = await client.chat.completions.create(**request)
+            except Exception as exc:
+                safe_error = _safe_error(exc)
+                generation.update(output={"error": str(safe_error)})
+                raise safe_error from None
             latency_ms = (perf_counter() - started) * 1000
             message = response.choices[0].message
             output = {
-                "content": message.content,
+                "content": _redact_secrets(message.content),
                 "tool_calls": [
                     {
                         "id": call.id,
                         "name": call.function.name,
-                        "arguments": call.function.arguments,
+                        "arguments": _redact_secrets(call.function.arguments),
                     }
                     for call in (message.tool_calls or [])
                 ],
             }
             update: dict[str, Any] = {
-                "output": output,
+                "output": _redact_secrets(output),
                 "metadata": {"latency_ms": latency_ms},
             }
             usage = getattr(response, "usage", None)
@@ -138,7 +190,7 @@ class Agent:
         with langfuse.start_as_current_observation(
             as_type="tool",
             name=f"mcp-tool:{name}",
-            input={"arguments": arguments},
+            input=_redact_secrets({"arguments": arguments}),
         ) as observation:
             try:
                 tool = self.tools.get(name)
@@ -155,9 +207,10 @@ class Agent:
                         ) from exc
                 result = await call_tool(client, tool, arguments)
             except (ToolArgumentError, ToolExecutionError) as exc:
-                observation.update(output={"error": str(exc)})
-                raise
-            observation.update(output=result)
+                safe_error = _safe_error(exc)
+                observation.update(output={"error": str(safe_error)})
+                raise safe_error from None
+            observation.update(output=_redact_secrets(result))
             return result
 
     async def _run_with_client(self, prompt: str, client: Any) -> str:
@@ -240,14 +293,19 @@ class Agent:
         with langfuse.start_as_current_observation(
             as_type="span",
             name="agent-execution",
-            input={"question": prompt},
+            input=_redact_secrets({"question": prompt}),
         ) as observation:
-            if self.openai_client is not None:
-                answer = await self._run_with_client(prompt, self.openai_client)
-            else:
-                async with AsyncOpenAI() as client:
-                    answer = await self._run_with_client(prompt, client)
-            observation.update(output={"answer": answer})
+            try:
+                if self.openai_client is not None:
+                    answer = await self._run_with_client(prompt, self.openai_client)
+                else:
+                    async with AsyncOpenAI() as client:
+                        answer = await self._run_with_client(prompt, client)
+            except Exception as exc:
+                safe_error = _safe_error(exc)
+                observation.update(output={"error": str(safe_error)})
+                raise safe_error from None
+            observation.update(output=_redact_secrets({"answer": answer}))
             return answer
 
 
