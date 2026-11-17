@@ -2,11 +2,11 @@
 
 The requested `src/market_os/server/` location maps to this repository's existing
 `src/server/` package. Processed data is written under Hive partitions
-`interval/year/month/symbol`; current symbol discovery only checks top-level
-Parquet files, so allowlist discovery must account for that layout.
+`interval/year/month/symbol`; symbol discovery supports those partitions and
+legacy top-level Parquet files.
 
 1. [x] Add centralized analytics configuration and the DuckDB dependency; reuse the existing server package and processed-data conventions.
-2. [ ] Add predefined parameterized DuckDB queries and shared validation for symbols, timestamps, ranges, limits, and enumerated inputs.
+2. [x] Add predefined parameterized DuckDB queries and shared validation for symbols, timestamps, ranges, limits, and enumerated inputs.
 3. [ ] Implement `get_bars()` with ascending UTC timestamps, OHLCV schema, and configured bounds.
 4. [ ] Implement `intraday_stats()` and `get_price_extremes()` with IST trading dates, correct aggregation, deterministic ties, and safe empty/zero-volume results.
 5. [ ] Implement `get_volume_stats()` with chronological IST hourly/daily buckets and clearly defined candle versus bucket averages.

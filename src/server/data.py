@@ -8,11 +8,21 @@ from pathlib import Path
 
 
 def list_symbols(data_dir: str | Path) -> list[str]:
-    """Return the stems of every parquet file in `data_dir`."""
+    """Return symbols from flat Parquet files and Hive symbol partitions."""
     root = Path(data_dir)
     if not root.is_dir():
         raise FileNotFoundError(f"data directory not found: {root}")
-    return sorted(path.stem for path in root.glob("*.parquet"))
+
+    symbols = {path.stem for path in root.glob("*.parquet")}
+    for parquet_path in root.rglob("*.parquet"):
+        relative_parts = parquet_path.relative_to(root).parts
+        for part in relative_parts:
+            if part.startswith("symbol="):
+                symbol = part.removeprefix("symbol=")
+                if symbol:
+                    symbols.add(symbol)
+                break
+    return sorted(symbols)
 
 
 def symbol_path(data_dir: str | Path, symbol: str) -> Path:
