@@ -9,7 +9,7 @@ Use the current [MCP Python SDK 2.x documentation](https://py.sdk.modelcontextpr
 5. [x] Keep tool implementations in `tools.py` independent of the transports configured in `main.py`.
 6. [x] Keep the server read-only: accept no arbitrary SQL or filesystem paths and perform no database or filesystem writes.
 7. [x] Create `tests/test_mcp_server.py` and test startup and all six tools through the MCP interface over stdio and Streamable HTTP: discovery, valid results, invalid arguments, empty results, and execution errors.
-8. [ ] Run the existing DuckDB analytics tests and confirm they remain unaffected.
+8. [x] Run the existing DuckDB analytics tests and confirm they remain unaffected.
 
 ## Bug log
 
