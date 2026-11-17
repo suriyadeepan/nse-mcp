@@ -8,7 +8,7 @@ Integrate Langfuse into the local MCP client and OpenAI agent to inspect complet
 
 - [x] **T1 — Confirm Langfuse Cloud authentication:** Use environment credentials; never read, print, or commit `.env` contents.
 - [x] **T2 — Initialize and flush Langfuse:** Set up Langfuse in `src/client/main.py` and flush it cleanly when the client exits.
-- [ ] **T3 — Trace agent executions:** Capture each complete execution, including the user question and final answer.
+- [x] **T3 — Trace agent executions:** Capture each complete execution, including the user question and final answer.
 - [ ] **T4 — Record OpenAI calls:** Capture model requests and responses, including latency and token usage when available.
 - [ ] **T5 — Record MCP tool calls:** Capture tool names, generated arguments, executions, and results.
 - [ ] **T6 — Organize trace hierarchy:** Give each execution a parent trace with child spans for model calls and tool calls.

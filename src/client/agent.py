@@ -159,10 +159,21 @@ class Agent:
 
     async def run(self, prompt: str) -> str:
         """Answer a prompt, executing model-selected MCP tools as needed."""
-        if self.openai_client is not None:
-            return await self._run_with_client(prompt, self.openai_client)
-        async with AsyncOpenAI() as client:
-            return await self._run_with_client(prompt, client)
+        from langfuse import get_client
+
+        langfuse = get_client()
+        with langfuse.start_as_current_observation(
+            as_type="span",
+            name="agent-execution",
+            input={"question": prompt},
+        ) as observation:
+            if self.openai_client is not None:
+                answer = await self._run_with_client(prompt, self.openai_client)
+            else:
+                async with AsyncOpenAI() as client:
+                    answer = await self._run_with_client(prompt, client)
+            observation.update(output={"answer": answer})
+            return answer
 
 
 def run(
