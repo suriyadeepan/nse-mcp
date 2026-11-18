@@ -1,0 +1,6 @@
+# Server runtime only; the MCP client and OpenAI agent stay outside Lambda.
+# Lambda server runtime dependencies
+duckdb==2.0.0
+mcp>=2,<3
+pydantic>=2,<3
+pyarrow>=26.0.1

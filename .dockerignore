@@ -1,0 +1,9 @@
+.git
+.venv
+data
+**/__pycache__
+tests
+terraform
+docs
+scripts
+docker-compose.yml

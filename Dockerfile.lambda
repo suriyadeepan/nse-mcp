@@ -1,0 +1,31 @@
+FROM public.ecr.aws/lambda/python:3.14
+
+# Keep the ASGI app and its Lambda adapter in the same container. The adapter
+# image publishes both supported Lambda architectures; build with the selected
+# target platform so DuckDB's native wheels and extensions match it.
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0 /lambda-adapter /opt/extensions/lambda-adapter
+
+ENV AWS_LWA_PORT=8080
+ENV HOME=${LAMBDA_TASK_ROOT}
+WORKDIR ${LAMBDA_TASK_ROOT}
+
+COPY requirements-lambda.txt .
+# --- Replaced with 3 steps ---
+# RUN python -m pip install --no-cache-dir -r requirements-lambda.txt \
+#     && python -c 'import duckdb; db = duckdb.connect(); db.execute("INSTALL httpfs"); db.execute("INSTALL aws"); db.close()'
+
+# --- 3 steps ---
+RUN python -m pip install --no-cache-dir -r requirements-lambda.txt
+RUN mkdir -p ${LAMBDA_TASK_ROOT}/.duckdb/extensions/v2.0.0/linux_amd64
+
+COPY binaries/linux_arm64/httpfs.duckdb_extension ${LAMBDA_TASK_ROOT}/.duckdb/extensions/v2.0.0/linux_arm64/
+COPY binaries/linux_arm64/aws.duckdb_extension ${LAMBDA_TASK_ROOT}/.duckdb/extensions/v2.0.0/linux_arm64/
+# ---x---
+RUN python -u -c "print('Python starts', flush=True)"
+
+RUN python -m pip show duckdb
+
+RUN python -u -c "print('Before import', flush=True); import duckdb; print('After import:', duckdb.__version__, flush=True)"
+COPY src/server ./server
+
+ENTRYPOINT ["python", "-m", "uvicorn", "server.main:app", "--host", "0.0.0.0", "--port", "8080"]

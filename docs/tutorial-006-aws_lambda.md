@@ -1,6 +1,6 @@
 # Tutorial 006: Upload the processed dataset to S3
 
-This tutorial covers the implemented dataset upload, DuckDB-to-S3 development, and partition pruning steps (T1–T4). Lambda provisioning and remote MCP access are still TODOs.
+This tutorial covers the implemented dataset upload, DuckDB-to-S3 development, partition pruning (T1–T4), local ARM64 Lambda image build (T6.3), and manual local RIE smoke test (T6.4). Lambda provisioning and remote MCP access are still TODOs.
 
 Run these commands from the repository root. Configure AWS CLI credentials and set the bucket name in `terraform/terraform.tfvars` (or pass it as a Terraform variable). The configured identity needs permission to manage the S3 bucket and upload objects.
 
@@ -49,6 +49,18 @@ uv run python -m scripts.query_s3_summary \
 ```
 
 The local connection uses DuckDB's `credential_chain`, which reads AWS CLI credentials. The deployed Lambda will use that same provider with its execution-role credentials.
+
+## Build the ARM64 Lambda container locally
+
+Build the Python 3.14 Lambda image for ARM64 from the repository root:
+
+```sh
+LAMBDA_PLATFORM=linux/arm64 ./scripts/build_lambda.sh
+```
+
+The image is tagged `kite-mcp-lambda:local`. The script defaults to `linux/arm64`; set `LAMBDA_PLATFORM` to override the target. This step builds the image; the manual container verification is documented separately in T6.4.
+
+The image was manually smoke-tested both directly over HTTP and through RIE. See [the T6.4 smoke-test record](006-aws_lambda-smoke-test-docu.md) for commands, expected responses, and verified results.
 
 ## Verify partition pruning
 
