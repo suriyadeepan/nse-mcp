@@ -6,7 +6,7 @@ This guide combines the implementation notes, setup steps, terminal walkthrough,
 
 - Region: `ap-south-1`
 - Lambda: `kite-mcp`, ARM64 container, 2,048 MB, 300-second timeout
-- MCP endpoint: `https://onznjliuy5yjpzwozpjrjepwa40nzdhe.lambda-url.ap-south-1.on.aws/mcp`
+- MCP endpoint: `https://cyrosvlkokbjjafuulwooidvw40xopcd.lambda-url.ap-south-1.on.aws/mcp`
 - Dataset: `s3://nse-mcp-data/data/processed`
 - Current image: `025232685609.dkr.ecr.ap-south-1.amazonaws.com/kite-mcp@sha256:2e05ee9f1203542058a1dcf76c528b7afe1e9367ec248e9510854993549b18cd`
 - Dataset objects are existing read-only input to Lambda. Terraform detaches the bucket and public access block from its state and has no upload or object-deletion provisioner. Do not upload the dataset again unless an upload is explicitly intended.
@@ -122,6 +122,14 @@ T12.7 live checks:
 | CloudWatch review | Last 24 hours: 143 events, 14 authorized-request entries, 9 successful HTTP 200 requests; no bearer-token match or common credential pattern found |
 
 The CloudWatch check was completed after `logs:FilterLogEvents` was added to the caller's permissions. That permission is for log review; it is separate from the Lambda execution role.
+
+## Step 7 restoration (2026-11-19)
+
+After review and explicit approval of the saved Terraform plan (`/tmp/kite-mcp-t009.tfplan`, SHA-256 `70c8a13c9efcdb5a8e4124bc3aa8fc313cea5d2e20922df416d1b2d6ed361d3c`), `terraform -chdir=terraform apply -no-color /tmp/kite-mcp-t009.tfplan` created the seven planned demo resources: the CloudWatch log group, Lambda execution role and inline policy, Lambda function, Function URL, and two Function URL invoke permissions. The final plan had 7 creates, 0 updates, and 0 deletes. No S3 resources or dataset objects were changed.
+
+The restored Lambda is active in `ap-south-1` on ARM64, with a 300-second timeout and 2,048 MB memory. The Function URL is `https://cyrosvlkokbjjafuulwooidvw40xopcd.lambda-url.ap-south-1.on.aws/mcp`. Its AWS URL authorization type is `NONE`, with public URL invoke permissions; application bearer middleware still requires the configured token. A POST to `/mcp` without credentials returned HTTP 401, confirming network reachability and authentication enforcement. Authenticated tool discovery and S3-backed analytics are recorded separately after live client verification.
+
+The post-apply S3 inventory returned 2,781 objects totaling 326,546,421 bytes under `data/processed/`, matching the pre-apply baseline. The restored log group is `/aws/lambda/kite-mcp` with 14-day retention. The runtime IAM policy remains scoped to `s3:ListBucket` on `nse-mcp-data` conditioned to `data/processed` and its descendants, `s3:GetObject` on `data/processed/*`, `logs:CreateLogGroup` on `/aws/lambda/kite-mcp`, and `logs:CreateLogStream` plus `logs:PutLogEvents` on its log streams. The role trust policy grants `sts:AssumeRole` to `lambda.amazonaws.com`.
 
 ## Validation record
 
