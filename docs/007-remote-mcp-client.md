@@ -13,6 +13,13 @@
 - `src/client/main.py` now resolves `--server` before `MCP_SERVER_URL`, with `http://localhost:8000/mcp` as the local fallback. It reads the bearer token from `MCP_BEARER_TOKEN`; configured non-default endpoints without a token fail before a network request with a generic message that contains neither endpoint nor credential values. The local default continues to work without remote settings. The token will be passed to the transport in T003/T004.
 - `uv run --with pytest pytest tests/test_client.py` — 12 passed, including URL precedence, environment token loading, local fallback, and missing-token error safety.
 
+## Authenticated MCP transport implementation
+
+- `src/client/discovery.py` now accepts an optional bearer token on connection, discovery, and tool-listing calls. Authenticated connections configure `httpx2.AsyncClient(headers={"Authorization": "Bearer …"})` and pass the MCP 2.3.0 Streamable HTTP transport context manager to `Client`; the HTTP client is closed with the session. Existing token-free local sessions retain the URL-based client path.
+- Added a protected local ASGI regression test that discovers a tool and executes it in a separately opened authenticated session. An invalid sentinel token produces the generic sanitized connection error without including the token or endpoint.
+- During implementation, an initial test caught that `Client` must receive the transport context manager, not the yielded stream tuple. The handoff was corrected. The next test run exposed only an assertion mismatch with MCP's structured tool result (`{"result": "result:ok"}`); the regression assertion now matches the returned structured content.
+- `uv run --with pytest pytest tests/test_client.py tests/test_langfuse.py` — 24 passed.
+
 ## Verification evidence
 
 - `uv run python --version` — `Python 3.15.2`.

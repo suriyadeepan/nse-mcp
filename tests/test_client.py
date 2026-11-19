@@ -20,7 +20,9 @@ from client.agent import _token_encoding
 from client import main as client_main
 from client.discovery import (
     MCPConnectionError,
+    call_tool,
     connect_to_server,
+    discover_tools,
     list_tools,
     to_openai_tools,
 )
@@ -115,6 +117,71 @@ async def test_connection_failure_has_clear_non_sensitive_message():
 
     assert "secret" not in str(error.value)
     assert "hidden" not in str(error.value)
+
+
+@pytest.mark.anyio
+async def test_bearer_authenticates_discovery_and_tool_execution(monkeypatch):
+    from server.auth import BearerAuthMiddleware
+
+    token = "client-auth-sentinel-token"
+    monkeypatch.setenv("MCP_BEARER_TOKEN", token)
+    mcp_server = MCPServer("protected-client")
+
+    @mcp_server.tool(name="protected_lookup", description="Return a protected value.")
+    def protected_lookup(value: str) -> str:
+        return f"result:{value}"
+
+    app = BearerAuthMiddleware(mcp_server.streamable_http_app())
+    async with serve_mcp_app(app) as url:
+        discovered = await discover_tools(url, bearer_token=token)
+        assert "protected_lookup" in discovered
+
+        async with connect_to_server(url, bearer_token=token) as client:
+            result = await call_tool(
+                client, discovered["protected_lookup"], {"value": "ok"}
+            )
+
+    assert result == {"result": "result:ok"}
+
+
+@asynccontextmanager
+async def serve_mcp_app(app: Any) -> AsyncIterator[str]:
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    sock.listen()
+    port = sock.getsockname()[1]
+    http_server = uvicorn.Server(uvicorn.Config(app, log_level="critical"))
+    task = asyncio.create_task(http_server.serve(sockets=[sock]))
+    try:
+        for _ in range(100):
+            if http_server.started:
+                break
+            if task.done():
+                await task
+            await asyncio.sleep(0.05)
+        assert http_server.started, "ASGI server did not start"
+        yield f"http://127.0.0.1:{port}/mcp"
+    finally:
+        http_server.should_exit = True
+        await task
+
+
+@pytest.mark.anyio
+async def test_invalid_bearer_auth_error_does_not_expose_token(monkeypatch):
+    from server.auth import BearerAuthMiddleware
+
+    sentinel = "invalid-client-auth-sentinel"
+    monkeypatch.setenv("MCP_BEARER_TOKEN", "expected-server-token")
+    mcp_server = MCPServer("protected-client")
+    app = BearerAuthMiddleware(mcp_server.streamable_http_app())
+
+    async with serve_mcp_app(app) as url:
+        with pytest.raises(MCPConnectionError) as error:
+            async with connect_to_server(url, bearer_token=sentinel):
+                pytest.fail("unauthorized session unexpectedly connected")
+
+    assert sentinel not in str(error.value)
+    assert "127.0.0.1" not in str(error.value)
 
 
 def test_cli_passes_http_endpoint_prompt_and_prints_answer(monkeypatch, capsys):

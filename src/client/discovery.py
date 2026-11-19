@@ -3,8 +3,10 @@
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 
+import httpx2
 from jsonschema import Draft202012Validator, ValidationError
 from mcp import Client, types
+from mcp.client.streamable_http import streamable_http_client
 
 
 DEFAULT_SERVER_URL = "http://localhost:8000/mcp"
@@ -26,29 +28,48 @@ class ToolExecutionError(RuntimeError):
 async def connect_to_server(
     server_url: str = DEFAULT_SERVER_URL,
     timeout: float = 10.0,
+    bearer_token: str | None = None,
 ) -> AsyncIterator[Client]:
     """Open a Streamable HTTP MCP session and report connection failures clearly."""
-    client = Client(server_url, read_timeout_seconds=timeout)
+    if bearer_token:
+        http_client = httpx2.AsyncClient(
+            headers={"Authorization": f"Bearer {bearer_token}"}
+        )
+        transport = streamable_http_client(server_url, http_client=http_client)
+        client = Client(transport, read_timeout_seconds=timeout)
+    else:
+        transport = None
+        http_client = None
+        client = Client(server_url, read_timeout_seconds=timeout)
     try:
         await client.__aenter__()
-    except Exception as exc:
+    except Exception:
+        if http_client is not None:
+            await http_client.aclose()
         # Avoid echoing the URL: it may contain credentials or sensitive query data.
         raise MCPConnectionError(
             "Could not connect to the MCP server over Streamable HTTP. "
             "Check that the server is running and the endpoint URL is correct."
-        ) from exc
+        ) from None
     try:
         yield client
     finally:
-        await client.__aexit__(None, None, None)
+        try:
+            await client.__aexit__(None, None, None)
+        finally:
+            if http_client is not None:
+                await http_client.aclose()
 
 
 async def list_tools(
     server_url: str = DEFAULT_SERVER_URL,
     timeout: float = 10.0,
+    bearer_token: str | None = None,
 ) -> list[types.Tool]:
     """Discover every tool from the server, following MCP list pagination."""
-    async with connect_to_server(server_url, timeout=timeout) as client:
+    async with connect_to_server(
+        server_url, timeout=timeout, bearer_token=bearer_token
+    ) as client:
         tools: list[types.Tool] = []
         cursor: str | None = None
         while True:
@@ -108,6 +129,12 @@ async def call_tool(
     return [content.model_dump(mode="json") for content in result.content]
 
 
-async def discover_tools(server_url: str = DEFAULT_SERVER_URL) -> dict[str, types.Tool]:
+async def discover_tools(
+    server_url: str = DEFAULT_SERVER_URL,
+    bearer_token: str | None = None,
+) -> dict[str, types.Tool]:
     """Return discovered tools keyed by name."""
-    return {tool.name: tool for tool in await list_tools(server_url)}
+    return {
+        tool.name: tool
+        for tool in await list_tools(server_url, bearer_token=bearer_token)
+    }
