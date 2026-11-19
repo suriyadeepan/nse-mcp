@@ -1,6 +1,6 @@
 # Tutorial 006: Upload the processed dataset to S3
 
-This tutorial covers the implemented dataset upload, DuckDB-to-S3 development, partition pruning (T1–T4), local ARM64 Lambda image build (T6.3), and manual local RIE smoke test (T6.4). Lambda provisioning and remote MCP access are still TODOs.
+This tutorial covers the implemented dataset upload, DuckDB-to-S3 development, partition pruning (T1–T4), local ARM64 Lambda image build (T6.3), manual local RIE smoke test (T6.4), and Terraform configuration for Lambda infrastructure (T8). Applying the deployment and verifying remote MCP access are still pending.
 
 Run these commands from the repository root. Configure AWS CLI credentials and set the bucket name in `terraform/terraform.tfvars` (or pass it as a Terraform variable). The configured identity needs permission to manage the S3 bucket and upload objects.
 

@@ -32,7 +32,7 @@ Deploy the existing MCP server and DuckDB analytics layer to AWS Lambda using Te
   - **Depends on:** T5.3, T6.3.
 - [x] **T7 — Give Lambda only the AWS permissions it needs (IAM)** — Add `terraform/iam.tf` with a Lambda execution role, which is like a limited work badge the function uses when it runs. Let it read the dataset files under the configured S3 prefix and write its logs to CloudWatch. Keep these permissions scoped to that dataset and those logs; Lambda must not need saved AWS access keys. The application uses the role automatically to access S3. Verify the trust policy and permission scope with `terraform/iam.tftest.hcl`.
   - **Depends on:** T1, T3.
-- [ ] **T8 — Provision Lambda infrastructure** — Add Terraform configuration in `terraform/main.tf` and `terraform/variables.tf` for Lambda, Function URL, and CloudWatch logging, with configurable deployment values. Attach `aws_iam_role.lambda_execution` and use the shared `lambda_function_name` so the role and log permissions match the function. S3 bucket provisioning is covered by T2.
+- [x] **T8 — Provision Lambda infrastructure** — Add Terraform configuration in `terraform/main.tf` and `terraform/variables.tf` for an ARM64 container-image Lambda, Function URL, and retained CloudWatch log group. Configure the ECR image URI, function name, memory, timeout, and log retention; attach `aws_iam_role.lambda_execution` and pass the S3 dataset settings to the application. The Function URL allows requests through so T9 can enforce bearer authentication in the app. Verify the deployment plan with `terraform/main.tftest.hcl`. This provisions infrastructure in code; applying it to AWS remains part of end-to-end deployment verification.
   - **Depends on:** T6.4, T7.
 - [ ] **T9 — Protect and expose the endpoint** — Validate a demo bearer token in the application for Function URL requests; reject missing or invalid tokens, and keep credentials out of source control, logs, and errors.
   - **Depends on:** T5.1, T5.2, T8.
@@ -82,7 +82,7 @@ The audit found no circular dependency. Local DuckDB-to-S3 development happens i
 - `tests/test_lambda.py` — Lambda/HTTP/authentication and role-authenticated S3 coverage (T11).
 - `terraform/iam.tf` — least-privilege Lambda S3 and CloudWatch permissions (T7).
 - `terraform/iam.tftest.hcl` — mocked-provider checks for the execution role, S3 scope, and CloudWatch log scope (T7).
-- `terraform/main.tf`, `terraform/variables.tf` — Lambda, Function URL, CloudWatch, and configurable deployment resources (T8).
+- `terraform/main.tf`, `terraform/variables.tf`, `terraform/main.tftest.hcl` — Lambda, Function URL, CloudWatch, configurable deployment resources, and mocked-plan coverage (T8).
 - `src/server/` authentication implementation and `terraform/main.tf` Function URL settings — bearer-token protection (T9).
 - `terraform/outputs.tf`, `terraform/terraform.tfvars.example`, `terraform/` teardown configuration — endpoint output, safe example values, and resource cleanup (T10).
 - Terraform deployment, `scripts/upload_dataset.sh`, `tests/test_http.py`, `tests/test_lambda.py`, and AWS runtime checks — end-to-end deployment and teardown verification (T12).

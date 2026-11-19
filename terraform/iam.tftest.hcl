@@ -29,6 +29,7 @@ run "execution_role_is_lambda_assumable_and_scoped" {
 
   variables {
     processed_data_bucket = "unit-test-market-data"
+    lambda_image_uri      = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/kite-mcp:latest"
     dataset_prefix        = "market/processed"
     lambda_function_name  = "kite-mcp-unit-test"
   }

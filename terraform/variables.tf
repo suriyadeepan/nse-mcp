@@ -25,3 +25,41 @@ variable "lambda_function_name" {
   type        = string
   default     = "kite-mcp"
 }
+
+variable "lambda_image_uri" {
+  description = "ECR image URI for the Lambda container, including its tag or digest"
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9]{12}\\.dkr\\.ecr\\.[a-z0-9-]+\\.amazonaws\\.com(/[^[:space:]]+)$", var.lambda_image_uri))
+    error_message = "lambda_image_uri must be an ECR image URI including a repository and tag or digest."
+  }
+}
+
+variable "lambda_memory_size" {
+  description = "Lambda memory allocation in MB"
+  type        = number
+  default     = 2048
+
+  validation {
+    condition     = var.lambda_memory_size >= 128 && var.lambda_memory_size <= 10240
+    error_message = "lambda_memory_size must be between 128 and 10240 MB."
+  }
+}
+
+variable "lambda_timeout" {
+  description = "Lambda timeout in seconds"
+  type        = number
+  default     = 300
+
+  validation {
+    condition     = var.lambda_timeout >= 1 && var.lambda_timeout <= 900
+    error_message = "lambda_timeout must be between 1 and 900 seconds."
+  }
+}
+
+variable "lambda_log_retention_days" {
+  description = "CloudWatch log retention period in days"
+  type        = number
+  default     = 14
+}
