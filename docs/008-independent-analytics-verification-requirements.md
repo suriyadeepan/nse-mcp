@@ -7,9 +7,9 @@
 ## Requirements
 
 - **R002 — Verify analytical correctness (T001):** Run one deterministic analytics query through the remote MCP client against the deployed S3 dataset. Independently calculate expected values from local Parquet data. Compare corresponding numeric fields using a configurable tolerance. Report expected values, actual values, differences and PASS/FAIL.
-- **R003 — Verify invalid-input rejection (T002):** Submit an invalid symbol through the remote MCP endpoint. Confirm the server rejects it cleanly without exposing internal details or credentials.
-- **R004 — Verify runtime logging (T003):** Confirm CloudWatch contains the corresponding Lambda invocation. Capture the Lambda request start timestamp immediately before each MCP call, capture the MCP response and its request/correlation identifier if available, and query CloudWatch within a bounded time window. Match using the Lambda request ID from response metadata or a unique request identifier propagated into logs. Ensure logs do not expose bearer tokens or other credentials. If no reliable identifier is available, report correlation as UNVERIFIED rather than claiming a match.
-- **R005 — Produce verification report (T004):** Add a small deterministic smoke-test command. Report PASS/FAIL separately for analytical correctness, invalid-input rejection and CloudWatch verification. Clearly distinguish PASS, FAIL, NOT RUN and UNVERIFIED checks. Never fabricate passing results.
+- **R003 — Verify invalid-input rejection (T003):** Submit an invalid symbol through the remote MCP endpoint. Confirm the server rejects it cleanly without exposing internal details or credentials.
+- **R004 — Verify runtime logging (T004):** Confirm CloudWatch contains the corresponding Lambda invocation. Capture the Lambda request start timestamp immediately before each MCP call, capture the MCP response and its request/correlation identifier if available, and query CloudWatch within a bounded time window. Match using the Lambda request ID from response metadata or a unique request identifier propagated into logs. Ensure logs do not expose bearer tokens or other credentials. If no reliable identifier is available, report correlation as UNVERIFIED rather than claiming a match.
+- **R005 — Produce verification report (T005):** Add a small deterministic smoke-test command. Report PASS/FAIL separately for analytical correctness, invalid-input rejection and CloudWatch verification. Clearly distinguish PASS, FAIL, NOT RUN and UNVERIFIED checks. Never fabricate passing results.
 
 ## Acceptance criteria
 

@@ -31,7 +31,7 @@
 | Lambda deployment target | VERIFIED | `Dockerfile.lambda` uses the AWS Lambda Python 3.14 base image and Terraform configures ARM64. Any minimal server logging instrumentation uses the existing target and requires a separately reviewed image update before live use. |
 | Native dependencies | VERIFIED | No new native dependency is planned; existing PyArrow and MCP packages are reused. |
 | CloudWatch interface | VERIFIED | Terraform provisions `/aws/lambda/${var.lambda_function_name}`; AWS CLI is the planned read-only access method, subject to local credentials and permissions. |
-| Deployment availability | DESTROYED | The user reports that the demo Lambda resources were manually destroyed. Live checks require separate authorization to restore/deploy; this plan authorizes neither. Report affected checks as NOT RUN until the endpoint and log group are available. |
+| Deployment availability | DESTROYED at planning | The user reported that the demo Lambda resources had been manually destroyed. Live checks required separate authorization to restore/deploy; this plan authorized neither. The subsequent separately authorized restoration is recorded below. |
 | Automated compatibility checks | PLANNED | `uv run pytest tests/test_verify_remote_analytics.py` plus existing focused MCP/client tests; verify locally installed AWS CLI behavior with a mocked or injected log-reader in unit coverage. |
 
 ## Risks and mitigations
@@ -54,4 +54,8 @@
 
 ## Approval boundary
 
-This plan covers remote MCP calls, read-only CloudWatch inspection, and (only if needed) a narrow non-secret request-ID logging change. The user reports that Lambda resources were manually destroyed. This plan does not authorize restoration, Terraform apply, deployment, IAM/security changes, or dataset mutation. Any restoration or image deployment requires a separately reviewed plan and explicit human approval. Until then, live checks must report NOT RUN.
+This plan covers remote MCP calls, read-only CloudWatch inspection, and (only if needed) a narrow non-secret request-ID logging change. At planning time, the user reported that Lambda resources were manually destroyed. This plan did not authorize restoration, Terraform apply, deployment, IAM/security changes, or dataset mutation. Any restoration or image deployment required a separate explicit human authorization. At that time, live checks had to report NOT RUN; later live results and the separate authorization are recorded below.
+
+## Separately authorized live-verification operation
+
+After this plan's scope was established, the user separately authorized restoration of the demo infrastructure and a live verification run. That operation recreated seven resources (Lambda, Function URL, log group, execution role and inline policy, and two Function URL permissions), then made two in-place Lambda updates to set the generated Function URL host and deploy the tested request-correlation middleware. The role's S3 access was limited to listing `data/processed` and reading objects under that prefix; its log permissions were limited to this Lambda log group. The Function URL has AWS `AuthType=NONE`, with application bearer authentication retained. No tracked Terraform source, dataset, or feature architecture changed. The operation and live evidence are recorded in the implementation journal. This separate authorization did not expand the feature's implementation scope or make infrastructure mutation part of its repeatable smoke command.
