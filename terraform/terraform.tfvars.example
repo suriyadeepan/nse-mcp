@@ -1,7 +1,8 @@
 # Copy to terraform.tfvars and replace placeholders before applying.
 processed_data_bucket = "replace-with-globally-unique-bucket-name"
-lambda_image_uri      = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/kite-mcp:latest"
-lambda_bearer_token   = "REPLACE_WITH_RANDOM_SECRET_OF_AT_LEAST_32_CHARS"
+lambda_image_uri         = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/kite-mcp:latest"
+lambda_function_url_host = "replace-with-function-url-host.lambda-url.ap-south-1.on.aws"
+lambda_bearer_token      = "REPLACE_WITH_RANDOM_SECRET_OF_AT_LEAST_32_CHARS"
 
 # Optional settings; defaults are shown for clarity.
 region                    = "ap-south-1"

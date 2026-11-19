@@ -36,6 +36,16 @@ variable "lambda_image_uri" {
   }
 }
 
+variable "lambda_function_url_host" {
+  description = "Exact hostname of the Lambda Function URL, used by MCP DNS rebinding protection"
+  type        = string
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9.-]+$", var.lambda_function_url_host))
+    error_message = "lambda_function_url_host must be a hostname without a scheme, path, or port."
+  }
+}
+
 variable "lambda_bearer_token" {
   description = "Bearer token required by the MCP HTTP endpoint; supply through a protected tfvars file or secure input"
   type        = string

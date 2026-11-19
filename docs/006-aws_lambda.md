@@ -8,7 +8,7 @@ This guide combines the implementation notes, setup steps, terminal walkthrough,
 - Lambda: `kite-mcp`, ARM64 container, 2,048 MB, 300-second timeout
 - MCP endpoint: `https://cyrosvlkokbjjafuulwooidvw40xopcd.lambda-url.ap-south-1.on.aws/mcp`
 - Dataset: `s3://nse-mcp-data/data/processed`
-- Current image: `025232685609.dkr.ecr.ap-south-1.amazonaws.com/kite-mcp@sha256:2e05ee9f1203542058a1dcf76c528b7afe1e9367ec248e9510854993549b18cd`
+- Current image: `025232685609.dkr.ecr.ap-south-1.amazonaws.com/kite-mcp@sha256:2c3407c4fcf2f711122132cb4ef961fd76eb8fa5aeb197eb83dcbf89c9e12aa1`
 - Dataset objects are existing read-only input to Lambda. Terraform detaches the bucket and public access block from its state and has no upload or object-deletion provisioner. Do not upload the dataset again unless an upload is explicitly intended.
 
 ## Try MCP from a terminal
@@ -97,7 +97,7 @@ The intended plan for an image release is an in-place Lambda image update only. 
 
 Terraform provisions the ARM64 image Lambda, execution role, scoped runtime policy, Function URL, invoke permissions, and a retained CloudWatch log group. The Function URL has `AuthType=NONE` so requests reach application middleware, which requires `Authorization: Bearer …`. Terraform keeps the `lambda:InvokeFunctionUrl` permission and a second URL-scoped `lambda:InvokeFunction` permission (`invoked_via_function_url = true`).
 
-MCP DNS rebinding protection allows the deployed Function URL hostname and narrow localhost development patterns. It does not allow arbitrary hosts. This fixed HTTP 421 `Invalid Host header` for authenticated requests while preserving rejection of an unrelated host.
+MCP DNS rebinding protection reads the exact deployed Function URL hostname from `MCP_FUNCTION_URL_HOST` and also allows narrow localhost development patterns. Terraform supplies `lambda_function_url_host` as a Lambda environment setting; arbitrary hosts remain rejected. Set this value to the current Function URL hostname when provisioning or restoring the Function URL.
 
 The existing S3 bucket and public access block are detached from Terraform state using `removed` blocks with `destroy = false`; the legacy destroy-time upload cleanup provisioner was removed. Dataset uploads remain a separate explicit operation using `scripts/upload_dataset.sh`.
 
@@ -130,6 +130,14 @@ After review and explicit approval of the saved Terraform plan (`/tmp/kite-mcp-t
 The restored Lambda is active in `ap-south-1` on ARM64, with a 300-second timeout and 2,048 MB memory. The Function URL is `https://cyrosvlkokbjjafuulwooidvw40xopcd.lambda-url.ap-south-1.on.aws/mcp`. Its AWS URL authorization type is `NONE`, with public URL invoke permissions; application bearer middleware still requires the configured token. A POST to `/mcp` without credentials returned HTTP 401, confirming network reachability and authentication enforcement. Authenticated tool discovery and S3-backed analytics are recorded separately after live client verification.
 
 The post-apply S3 inventory returned 2,781 objects totaling 326,546,421 bytes under `data/processed/`, matching the pre-apply baseline. The restored log group is `/aws/lambda/kite-mcp` with 14-day retention. The runtime IAM policy remains scoped to `s3:ListBucket` on `nse-mcp-data` conditioned to `data/processed` and its descendants, `s3:GetObject` on `data/processed/*`, `logs:CreateLogGroup` on `/aws/lambda/kite-mcp`, and `logs:CreateLogStream` plus `logs:PutLogEvents` on its log streams. The role trust policy grants `sts:AssumeRole` to `lambda.amazonaws.com`.
+
+## Step 7 host allowlist correction and live verification (2026-11-19)
+
+The first authenticated attempt after restoration returned HTTP 421 `Invalid Host header`: the image still allowed the old Function URL hostname. `src/server/main.py` now derives the permitted hostname from `MCP_FUNCTION_URL_HOST`; Terraform configures it from `lambda_function_url_host`. The regression test confirms the restored hostname initializes successfully and an unrelated hostname returns 421. The corrected ARM64 image was pushed as digest `sha256:2c3407c4fcf2f711122132cb4ef961fd76eb8fa5aeb197eb83dcbf89c9e12aa1`. The reviewed Terraform plan changed only `aws_lambda_function.mcp` in place (image and host environment value): 0 added, 1 changed, 0 destroyed. No IAM, Function URL, or S3 changes were planned.
+
+The deployment completed successfully. Authenticated runtime discovery returned all six analytics tools. The MCP client used separate authenticated discovery and execution sessions with the same endpoint and token. Live calls, all schema-valid, returned results for `get_bars`, `intraday_stats`, `get_price_extremes`, `get_volume_stats`, `compute_indicators`, and `compare_symbols`; the exact arguments and concise result values are recorded in the Step 7 journal.
+
+Natural-language live checks returned the RELIANCE Jan 2 session open/close, 1.60% return, VWAP and 375 bars using `intraday_stats`. A second query combined `get_price_extremes` and `get_volume_stats` for RELIANCE over Jan 1–3, reporting high 1,262.05 at 2025-01-03 08:04 UTC, low 1,211.60 at 2025-01-01 04:24 UTC, and daily volumes for all three dates. Langfuse contained two complete traces (4 and 5 observations) with root inputs/answers, two model generations each, and the expected tool observations. The MCP bearer token, OpenAI API key, Langfuse secret key, and MCP endpoint were absent from trace inputs/outputs. Langfuse adds its public project identifier to SDK-generated `scope.attributes.public_key` metadata; it did not appear in the observed inputs or outputs.
 
 ## Validation record
 

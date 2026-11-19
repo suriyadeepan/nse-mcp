@@ -22,7 +22,7 @@ Connect the existing dynamic OpenAI agent to the remote MCP server and verify th
 
 ## Scope exclusions and prerequisite
 
-- **R011:** No Lambda implementation, Docker build, ECR publishing, S3 upload, IAM or Terraform redesign; these belong to Step 6.
+- **R011:** No general Lambda redesign, S3 upload, IAM redesign, or unrelated Terraform redesign. The approved T010 scope is extended to configure the MCP Function URL host allowlist, regression-test the restored and unexpected hosts, publish the corrected Lambda image, and update the existing Lambda image configuration. The existing IAM and S3 settings remain unchanged.
 - **R012:** Step 6 demo Lambda resources were destroyed during teardown. Restore them using the existing Step 6 configuration before remote integration testing. The S3 dataset remains intact.
 
 ## Clarifications and assumptions

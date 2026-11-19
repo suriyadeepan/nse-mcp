@@ -50,7 +50,9 @@ def configure_test_bearer_token(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_lambda_function_url_host_is_allowed_and_unrelated_host_is_rejected():
+async def test_configured_restored_function_url_host_is_allowed_and_unrelated_host_is_rejected(
+    monkeypatch,
+):
     headers = {
         "Authorization": "Bearer http-test-token-with-at-least-32-chars",
         "Content-Type": "application/json",
@@ -69,9 +71,12 @@ async def test_lambda_function_url_host_is_allowed_and_unrelated_host_is_rejecte
     }
     mcp_server = MCPServer("host-check")
     server_tools.register_tools(mcp_server)
+    restored_host = "cyrosvlkokbjjafuulwooidvw40xopcd.lambda-url.ap-south-1.on.aws"
+    monkeypatch.setenv("MCP_FUNCTION_URL_HOST", restored_host)
+    security = server_main.build_transport_security()
     mcp_app = mcp_server.streamable_http_app(
         streamable_http_path="/mcp",
-        transport_security=server_main.transport_security,
+        transport_security=security,
     )
     app = BearerAuthMiddleware(mcp_app)
 
@@ -84,7 +89,7 @@ async def test_lambda_function_url_host_is_allowed_and_unrelated_host_is_rejecte
             allowed = await client.post(
                 "/mcp",
                 headers={
-                    "Host": server_main.LAMBDA_FUNCTION_URL_HOST,
+                    "Host": restored_host,
                 },
                 json=payload,
             )

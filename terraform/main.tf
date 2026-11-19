@@ -18,6 +18,7 @@ resource "aws_lambda_function" "mcp" {
       PROCESSED_DATA_S3_BUCKET = data.aws_s3_bucket.processed_data.bucket
       PROCESSED_DATA_S3_PREFIX = var.dataset_prefix
       MCP_BEARER_TOKEN         = var.lambda_bearer_token
+      MCP_FUNCTION_URL_HOST    = var.lambda_function_url_host
     }
   }
 
