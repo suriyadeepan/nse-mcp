@@ -4,6 +4,7 @@ import argparse
 import logging
 
 from mcp.server import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 
 from .auth import BearerAuthMiddleware
 from .tools import register_tools
@@ -13,7 +14,30 @@ logger = logging.getLogger(__name__)
 mcp = MCPServer("kite-mcp")
 register_tools(mcp)
 STREAMABLE_HTTP_PATH = "/mcp"
-app = BearerAuthMiddleware(mcp.streamable_http_app(streamable_http_path=STREAMABLE_HTTP_PATH))
+LAMBDA_FUNCTION_URL_HOST = (
+    "onznjliuy5yjpzwozpjrjepwa40nzdhe.lambda-url.ap-south-1.on.aws"
+)
+transport_security = TransportSecuritySettings(
+    enable_dns_rebinding_protection=True,
+    allowed_hosts=[
+        LAMBDA_FUNCTION_URL_HOST,
+        "127.0.0.1:*",
+        "localhost:*",
+        "[::1]:*",
+    ],
+    allowed_origins=[
+        f"https://{LAMBDA_FUNCTION_URL_HOST}",
+        "http://127.0.0.1:*",
+        "http://localhost:*",
+        "http://[::1]:*",
+    ],
+)
+app = BearerAuthMiddleware(
+    mcp.streamable_http_app(
+        streamable_http_path=STREAMABLE_HTTP_PATH,
+        transport_security=transport_security,
+    )
+)
 
 
 def main() -> None:

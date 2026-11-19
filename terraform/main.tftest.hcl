@@ -3,8 +3,8 @@ mock_provider "aws" {}
 run "lambda_uses_image_role_s3_config_and_function_url" {
   command = plan
 
-  override_resource {
-    target          = aws_s3_bucket.processed_data
+  override_data {
+    target          = data.aws_s3_bucket.processed_data
     override_during = plan
     values = {
       arn    = "arn:aws:s3:::unit-test-market-data"
@@ -74,6 +74,9 @@ run "lambda_uses_image_role_s3_config_and_function_url" {
       aws_lambda_function_url.mcp.authorization_type == "NONE",
       aws_lambda_permission.function_url.principal == "*",
       aws_lambda_permission.function_url.action == "lambda:InvokeFunctionUrl",
+      aws_lambda_permission.function_url_invoke.principal == "*",
+      aws_lambda_permission.function_url_invoke.action == "lambda:InvokeFunction",
+      aws_lambda_permission.function_url_invoke.invoked_via_function_url,
     ])
     error_message = "The Function URL must be publicly reachable so the application can enforce bearer authentication in T9."
   }

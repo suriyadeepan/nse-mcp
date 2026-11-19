@@ -1,17 +1,27 @@
-resource "aws_s3_bucket" "processed_data" {
-  bucket        = var.processed_data_bucket
-  force_destroy = true
+data "aws_s3_bucket" "processed_data" {
+  bucket = var.processed_data_bucket
+}
 
-  tags = {
-    Name      = "${var.processed_data_bucket}-processed-data"
-    ManagedBy = "Terraform"
+removed {
+  from = aws_s3_bucket.processed_data
+
+  lifecycle {
+    destroy = false
   }
 }
 
-resource "aws_s3_bucket_public_access_block" "processed_data" {
-  bucket                  = aws_s3_bucket.processed_data.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
+removed {
+  from = aws_s3_bucket_public_access_block.processed_data
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = terraform_data.processed_data_upload
+
+  lifecycle {
+    destroy = false
+  }
 }

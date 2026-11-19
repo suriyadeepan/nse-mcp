@@ -15,7 +15,7 @@ resource "aws_lambda_function" "mcp" {
   environment {
     variables = {
       PROCESSED_DATA_SOURCE    = "s3"
-      PROCESSED_DATA_S3_BUCKET = aws_s3_bucket.processed_data.bucket
+      PROCESSED_DATA_S3_BUCKET = data.aws_s3_bucket.processed_data.bucket
       PROCESSED_DATA_S3_PREFIX = var.dataset_prefix
       MCP_BEARER_TOKEN         = var.lambda_bearer_token
     }
@@ -35,5 +35,13 @@ resource "aws_lambda_permission" "function_url" {
   function_name          = aws_lambda_function.mcp.function_name
   principal              = "*"
   function_url_auth_type = "NONE"
+}
+
+resource "aws_lambda_permission" "function_url_invoke" {
+  statement_id             = "AllowFunctionUrlInvoke"
+  action                   = "lambda:InvokeFunction"
+  function_name            = aws_lambda_function.mcp.function_name
+  principal                = "*"
+  invoked_via_function_url = true
 }
 

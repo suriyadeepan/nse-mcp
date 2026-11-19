@@ -18,7 +18,7 @@ locals {
         Sid      = "ListOnlyTheDatasetPrefix"
         Effect   = "Allow"
         Action   = "s3:ListBucket"
-        Resource = aws_s3_bucket.processed_data.arn
+        Resource = data.aws_s3_bucket.processed_data.arn
         Condition = {
           StringLike = {
             "s3:prefix" = [
@@ -32,7 +32,7 @@ locals {
         Sid      = "ReadOnlyDatasetObjects"
         Effect   = "Allow"
         Action   = "s3:GetObject"
-        Resource = "${aws_s3_bucket.processed_data.arn}/${local.dataset_key_prefix}/*"
+        Resource = "${data.aws_s3_bucket.processed_data.arn}/${local.dataset_key_prefix}/*"
       },
       {
         Sid      = "CreateLambdaLogGroup"

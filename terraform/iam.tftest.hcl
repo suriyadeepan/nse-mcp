@@ -3,8 +3,8 @@ mock_provider "aws" {}
 run "execution_role_is_lambda_assumable_and_scoped" {
   command = plan
 
-  override_resource {
-    target          = aws_s3_bucket.processed_data
+  override_data {
+    target          = data.aws_s3_bucket.processed_data
     override_during = plan
     values = {
       arn = "arn:aws:s3:::unit-test-market-data"

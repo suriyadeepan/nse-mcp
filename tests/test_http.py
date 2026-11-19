@@ -10,9 +10,11 @@ import pytest
 import uvicorn
 from mcp import Client
 from mcp.client.streamable_http import streamable_http_client
+from mcp.server import MCPServer
 
 from server import main as server_main
 from server import tools as server_tools
+from server.auth import BearerAuthMiddleware
 
 
 @asynccontextmanager
@@ -45,6 +47,57 @@ def anyio_backend():
 @pytest.fixture(autouse=True)
 def configure_test_bearer_token(monkeypatch):
     monkeypatch.setenv("MCP_BEARER_TOKEN", "http-test-token-with-at-least-32-chars")
+
+
+@pytest.mark.anyio
+async def test_lambda_function_url_host_is_allowed_and_unrelated_host_is_rejected():
+    headers = {
+        "Authorization": "Bearer http-test-token-with-at-least-32-chars",
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        "MCP-Protocol-Version": "2025-03-26",
+    }
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-03-26",
+            "capabilities": {},
+            "clientInfo": {"name": "host-check", "version": "1.0"},
+        },
+    }
+    mcp_server = MCPServer("host-check")
+    server_tools.register_tools(mcp_server)
+    mcp_app = mcp_server.streamable_http_app(
+        streamable_http_path="/mcp",
+        transport_security=server_main.transport_security,
+    )
+    app = BearerAuthMiddleware(mcp_app)
+
+    async with mcp_app.router.lifespan_context(mcp_app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="https://function-url.test",
+            headers=headers,
+        ) as client:
+            allowed = await client.post(
+                "/mcp",
+                headers={
+                    "Host": server_main.LAMBDA_FUNCTION_URL_HOST,
+                },
+                json=payload,
+            )
+            rejected = await client.post(
+                "/mcp",
+                headers={"Host": "unrelated.example.com"},
+                json=payload,
+            )
+
+    assert allowed.status_code == 200
+    assert allowed.headers.get("mcp-session-id")
+    assert rejected.status_code == 421
+    assert rejected.text == "Invalid Host header"
 
 
 @pytest.mark.anyio
