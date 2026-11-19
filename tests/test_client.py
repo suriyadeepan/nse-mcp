@@ -128,6 +128,7 @@ def test_cli_passes_http_endpoint_prompt_and_prints_answer(monkeypatch, capsys):
         "--model",
         "test-model",
     ])
+    monkeypatch.setenv("MCP_BEARER_TOKEN", "test-bearer-token")
     monkeypatch.setattr(
         "client.agent.run",
         lambda server, prompt, model: calls.append((server, prompt, model)) or "Price: 123",
@@ -144,6 +145,39 @@ def test_cli_passes_http_endpoint_prompt_and_prints_answer(monkeypatch, capsys):
         ("http://127.0.0.1:9000/mcp", "Show me the latest price", "test-model")
     ]
     assert capsys.readouterr().out == "Price: 123\n"
+
+
+def test_server_config_uses_environment_and_local_default(monkeypatch):
+    monkeypatch.delenv("MCP_SERVER_URL", raising=False)
+    monkeypatch.delenv("MCP_BEARER_TOKEN", raising=False)
+    assert client_main._resolve_server_config(None) == (
+        "http://localhost:8000/mcp",
+        None,
+    )
+
+    monkeypatch.setenv("MCP_SERVER_URL", "https://mcp.example.test/mcp")
+    monkeypatch.setenv("MCP_BEARER_TOKEN", "sentinel-config-token")
+    assert client_main._resolve_server_config(None) == (
+        "https://mcp.example.test/mcp",
+        "sentinel-config-token",
+    )
+    assert client_main._resolve_server_config("http://localhost:9000/mcp") == (
+        "http://localhost:9000/mcp",
+        "sentinel-config-token",
+    )
+
+
+def test_remote_server_config_requires_token_without_exposing_values(monkeypatch):
+    monkeypatch.setenv("MCP_SERVER_URL", "https://mcp.example.test/mcp")
+    monkeypatch.delenv("MCP_BEARER_TOKEN", raising=False)
+
+    with pytest.raises(ValueError) as error:
+        client_main._resolve_server_config(None)
+
+    assert str(error.value) == (
+        "MCP_BEARER_TOKEN is required when using a remote MCP server."
+    )
+    assert "mcp.example.test" not in str(error.value)
 
 
 def test_openai_client_reads_api_key_from_environment(monkeypatch):
