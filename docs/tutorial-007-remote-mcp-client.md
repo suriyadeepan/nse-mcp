@@ -79,3 +79,29 @@ Do not copy credentials from `.env` into trace annotations, prompts, screenshots
 - **No Langfuse trace:** Confirm the optional Langfuse project settings and host, then issue another query.
 
 The restored demo endpoint and S3-backed dataset are deployment resources and may not always be running. Contact the deployment operator if the endpoint is unavailable.
+
+## Destroy the demo deployment and keep the dataset
+
+When the remote demo is no longer needed, Terraform can remove its seven managed demo resources: the Lambda function, Function URL, two Lambda invoke permissions, execution IAM role, inline runtime policy, and CloudWatch log group. The S3 bucket and its public access block are detached from Terraform state with `destroy = false`; the processed dataset is an input to the Lambda and is not managed for deletion. Do not run the separate dataset upload or cleanup scripts as part of teardown.
+
+Run the following from the repository root. First make and review a saved destroy plan using the same protected Terraform variables you used for deployment (normally `terraform/terraform.tfvars`):
+
+```sh
+terraform -chdir=terraform plan -destroy -out=/tmp/kite-mcp-destroy.tfplan
+terraform -chdir=terraform show -json /tmp/kite-mcp-destroy.tfplan \
+  | jq -r '[.resource_changes[] | {address, actions: .change.actions}]'
+```
+
+The filtered output lists each resource address and action without printing configuration values from the plan. The expected destroy actions are for the seven demo resources listed above. Legacy S3 resource addresses may appear with a `forget` action if they are still in state; this only removes Terraform tracking and does not delete the bucket or public access block. Do not apply a plan containing a S3 `delete` action or any unexpected infrastructure deletion. Stop and ask the infrastructure owner to review the plan if it differs. Keep the saved plan local and treat it as sensitive because Terraform plans can contain secret configuration values.
+
+After a person authorized to remove the deployment has reviewed and approved that exact plan, apply the saved plan:
+
+```sh
+terraform -chdir=terraform apply /tmp/kite-mcp-destroy.tfplan
+```
+
+This removes the Lambda endpoint and its IAM/logging resources, so remote client queries will stop working. The protected dataset remains in S3. Verify the teardown through `terraform -chdir=terraform state list` (no managed demo resources) and, if you have read access, compare the read-only inventory for `data/processed/` with its pre-destroy object count and byte total. The previously verified baseline was 2,781 objects and 326,546,421 bytes; a different result needs investigation. Remove the local saved plan after verification:
+
+```sh
+rm /tmp/kite-mcp-destroy.tfplan
+```
