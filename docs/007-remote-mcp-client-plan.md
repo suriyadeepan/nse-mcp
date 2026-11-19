@@ -2,59 +2,54 @@
 
 ## Scope and approach
 
-Extend the existing OpenAI client to connect to a protected Streamable HTTP MCP endpoint configured by environment. Preserve runtime `list_tools()` discovery, JSON Schema validation, multi-round tool execution, and Langfuse observations. Run remote smoke checks against the existing Step 6 deployment and S3 dataset after that deployment is restored. Do not change Lambda, container publishing, S3 upload, IAM, or Terraform design.
+- **P001 — Remote configuration [R001]:** Use `MCP_SERVER_URL` and `MCP_BEARER_TOKEN` for protected Streamable HTTP connections. Preserve the implemented `--server` override and localhost fallback. Send the token only as an authorization header and keep it out of errors, logs and traces.
+- **P002 — Dynamic tool workflow [R002, R003]:** Retain runtime `list_tools()` discovery, schema-derived OpenAI definitions, JSON Schema argument validation, MCP execution, and bounded multi-round conversations. Do not introduce a hardcoded tool catalogue or tool-specific client branches.
+- **P003 — Trace coverage [R005, R010]:** Retain Langfuse observations for the user query, OpenAI requests/responses, MCP tool inputs/results, and final response. Verify configured credentials and URL credentials are redacted.
+- **P004 — Live remote verification [R004, R006–R009, R012]:** After Step 6 resources are restored, exercise all six discovered analytics tools and representative natural-language queries against the S3-backed dataset, including a multi-tool query. Record selected tools, arguments, results, final answers, and trace evidence in the journal.
+- **P005 — Scope boundary [R011]:** Do not change Lambda implementation, Docker/ECR publishing, S3 contents, IAM design, or Terraform design. Restore the existing Step 6 resources only as a prerequisite, from its existing configuration.
 
-The implementation should use the existing MCP client library's supported request-header configuration to send `Authorization: Bearer …`; the endpoint URL and token must come from `MCP_SERVER_URL` and `MCP_BEARER_TOKEN`. Keep the localhost endpoint as the development default when no remote URL is supplied. Never include credentials in errors, logs, trace input, or command history. Confirm the locked MCP 2.3.0 header API before implementation.
+## Existing implementation and remaining evidence
 
-## Existing implementation and gaps
+The current client already implements authenticated Streamable HTTP sessions for discovery and execution, dynamic schemas, argument validation, a bounded multi-tool loop, and redacted Langfuse tracing. The Step 7 journal records automated regression and compatibility evidence. The remaining acceptance evidence is live remote verification after restoring the destroyed Step 6 endpoint. The existing TODO is the canonical task/status source and remains authoritative for task progress.
 
-- `src/client/discovery.py` already opens Streamable HTTP sessions, follows `list_tools()` pagination, converts discovered schemas to OpenAI tools, validates generated arguments, executes tools, and sanitizes connection errors. It currently supplies no authentication headers.
-- `src/client/agent.py` already performs dynamic tool selection, supports multiple tools and bounded tool rounds, and traces user input, OpenAI generations, MCP tool calls/results, and final answers through Langfuse with secret redaction.
-- `src/client/main.py` currently accepts a server URL CLI option with a localhost default, initializes Langfuse, flushes it at exit, and reports connection failures. It needs environment-based remote configuration and clear authentication/connection failure handling.
-- Existing tests cover dynamic discovery, arbitrary added tools, schema validation, tool execution, connection errors, multi-call loops, tracing, and redaction. They need authenticated-client coverage and remote E2E evidence for all six analytics tools and at least one multi-tool query.
-- `docs/006-aws_lambda.md` records that teardown removed the Lambda demo resources and preserved 2,781 dataset objects. Remote E2E testing depends on restoring those resources from existing Step 6 configuration.
+## Affected files and dependencies
 
-## Files and dependencies
-
-- `src/client/main.py` — resolve the endpoint from CLI override / `MCP_SERVER_URL` / localhost default, load the bearer token from the environment, and surface safe configuration errors.
-- `src/client/discovery.py` — configure authorization on every MCP session used for discovery and tool execution; preserve credential-safe errors.
-- `src/client/agent.py` — pass the same connection settings through discovery and execution without changing tool catalogue behavior; preserve complete redacted tracing.
-- `tests/test_client.py` — cover environment configuration, authorized discovery and calls, missing/invalid credentials, and regression of existing dynamic/multi-tool behavior.
-- `tests/test_langfuse.py` — verify remote request credentials are excluded while query, model/tool inputs and outputs, and final response remain traced safely.
-- `docs/007-remote-mcp-client.md` — implementation decisions, commands, test results, and live verification evidence.
-- `docs/tutorial-007-remote-mcp-client.md` — create on feature completion with environment setup and repeatable demo steps.
-
-No new runtime dependency is planned. The MCP package is locked at 2.3.0; the existing OpenAI, JSON Schema, dotenv, and Langfuse dependencies cover the workflow.
+- `src/client/main.py`, `src/client/discovery.py`, `src/client/agent.py` — existing connection, discovery, execution and trace implementation; change only if live verification exposes a defect.
+- `tests/test_client.py`, `tests/test_langfuse.py` — existing automated regression coverage; add regression coverage only for repeatable issues found during verification.
+- `docs/007-remote-mcp-client-requirements.md` — canonical requirements.
+- `docs/007-remote-mcp-client-todo.md` — canonical status; update only when task evidence changes.
+- `docs/007-remote-mcp-client.md` — durable decisions, commands, failures, and automated/live evidence.
+- `docs/tutorial-007-remote-mcp-client.md` — create when the remote workflow is verified.
+- `docs/006-aws_lambda.md`, `terraform/` — existing Step 6 deployment configuration and its restoration plan; no redesign is in scope.
+- No new runtime dependency is planned. The lockfile records MCP 2.3.0 and `httpx2` 2.16.2.
 
 ## Architecture compatibility
 
 | Area | Status | Evidence and implication |
 | --- | --- | --- |
-| Local runtime | VERIFIED | Project requires Python `>=3.15` (`pyproject.toml`, `uv.lock`); local `uv python find` resolves the repository `.venv` interpreter. Confirm its exact version with `uv run python --version` during implementation. |
-| Local CPU / OS | VERIFIED | `uname -sm` reports Darwin arm64. This is the client development host; no native client extension is introduced. |
-| Remote server runtime | VERIFIED | Step 6 Dockerfile uses AWS Lambda Python 3.14 and Terraform configures ARM64. Step 6 documents successful MCP HTTP operation on the deployed image. |
-| MCP transport and auth | VERIFIED | MCP 2.3.0's `streamable_http_client(url, http_client=...)` accepts a configured `httpx2.AsyncClient`; its headers can be set with `httpx2.AsyncClient(headers=...)`. `Client` accepts the resulting transport object. The server exposes Streamable HTTP at `/mcp` and Bearer middleware reads `MCP_BEARER_TOKEN` (`src/server/main.py`, `src/server/auth.py`). Protected local HTTP tests in `tests/test_http.py` and `tests/test_lambda.py` confirm authenticated initialization, tool listing, and execution. |
-| Native dependencies | VERIFIED | Client uses Python packages without adding native libraries; server native dependencies stay within the existing ARM64 Lambda image and are out of scope. |
-| Deployment target | VERIFIED / prerequisite outstanding | The target is the existing Step 6 Lambda Function URL `/mcp` and preserved S3 dataset. Step 6 records teardown of demo resources. Redeploy with the existing configuration before live checks; a Terraform apply requires human approval under repository instructions. |
-| Automated compatibility checks | PLANNED | Unit/integration tests will exercise Streamable HTTP auth, discovered schemas, argument validation, multi-tool rounds, safe failure messages, and trace redaction. Live deployment smoke checks separately verify remote connectivity and S3-backed answers. |
+| Client runtime | VERIFIED | `pyproject.toml` and `uv.lock` require Python `>=3.15`; the journal records `uv run python --version` as Python 3.15.2. |
+| Client OS/CPU | VERIFIED | The existing plan records development host `Darwin arm64`; no native client extension is introduced. |
+| MCP transport/auth | VERIFIED | Locked MCP 2.3.0 supports a configured `httpx2.AsyncClient` in `streamable_http_client`; its headers carry the bearer token. Existing client tests cover authenticated discovery and execution. |
+| Server runtime/target | VERIFIED | Step 6 documents the existing Lambda image as Python 3.14 on ARM64 and its Streamable HTTP `/mcp` endpoint. The remote resources are currently absent after teardown. |
+| Native dependencies | VERIFIED | Client changes use existing Python dependencies and add no native libraries. |
+| Deployment prerequisite | VERIFIED, restoration pending | Step 6 records a reviewed plan for restoring seven demo resources and confirms the S3 prefix still has 2,781 objects / 326,546,421 bytes. Applying the plan includes IAM role/policy creation and requires human approval. |
+| Automated compatibility checks | VERIFIED for client path | The journal records authenticated HTTP tests and client/Langfuse tests. Live endpoint, S3-backed query and Langfuse Cloud evidence remain to be gathered after restoration. |
 
 ## Risks and mitigations
 
-- **Bearer token leakage:** Keep it only in environment configuration and HTTP headers. Redact any SDK exception text before display or tracing; test failures with sentinel credentials.
-- **Split session configuration:** Discovery and subsequent tool calls open separate MCP sessions. Ensure both receive identical endpoint and authorization settings; test a protected local ASGI server.
-- **Remote deployment absent:** Step 6 teardown removed Lambda resources. Restore only the existing Step 6 resources after reviewing its Terraform plan and obtaining required apply approval; do not upload or alter S3 data.
-- **External service variability:** OpenAI and Langfuse require valid local environment configuration and network access. Keep automated tests mocked; record live checks independently and do not claim them passed unless actually run.
-- **Trace completeness and privacy:** Existing trace instrumentation is present. Verify user query, model request/response, tool input/result and final answer are present while endpoint credentials never appear.
+- **P006 — Credential exposure [R001, R005]:** Keep credentials in environment configuration and HTTP headers; preserve sanitization and redaction tests. Never copy secrets into docs or command history.
+- **P007 — Session mismatch [R003]:** Discovery and execution use separate MCP sessions; live verification must confirm both use the same resolved endpoint and authorization settings.
+- **P008 — Missing deployment [R004, R012]:** Do not start live queries until the reviewed Step 6 restoration is approved and applied. The deployment plan includes IAM changes; no apply is authorized by this plan.
+- **P009 — External service variability [R004, R005]:** Keep automated tests distinct from live AWS/OpenAI/Langfuse checks and record actual results without implying unverified success.
 
-## Acceptance criteria and validation
+## Acceptance and validation
 
-- Client uses an environment-configured remote `/mcp` URL and bearer token without hardcoded credentials; failures are clear and credential-safe.
-- Runtime MCP discovery returns all six analytics tools and converts their discovered schemas to OpenAI definitions.
-- Generated tool arguments are checked against discovered schemas; remote tool results return to OpenAI and a conversation can execute multiple tools.
-- Automated tests cover authenticated transport, invalid/missing auth handling, dynamic discovery, multi-tool execution, and secret-safe Langfuse traces.
-- After restoring Step 6 resources, run natural-language S3 dataset queries, verify tool selection/arguments/results/final responses, include one multi-tool query, and inspect the resulting Langfuse trace.
-- Record exact validation commands and results in the implementation journal; distinguish automated checks from live AWS/OpenAI/Langfuse verification.
+- **P010 [R001, R006]:** Connect to the remote `/mcp` endpoint using environment configuration; verify authentication and sanitized failure behavior.
+- **P011 [R002, R007]:** Discover all six analytics tools at runtime and verify definitions come from returned schemas.
+- **P012 [R003, R008, R009]:** Verify schema-checked arguments, remote results returned to OpenAI, natural-language answers, and at least one multi-tool conversation.
+- **P013 [R005, R010]:** Inspect Langfuse for the complete query/model/tool/result/final-answer trace and absence of credentials.
+- **P014 [R004, R012]:** Record exact commands, tool selections, arguments, results, final answers, trace evidence, and failures in the journal. Separate automated checks from live checks.
 
 ## Approval boundary
 
-This document is the proposed implementation plan for review. Restoring Lambda resources is a separate prerequisite requiring a Terraform plan review and explicit apply approval; no AWS changes are part of planning.
+This plan does not authorize Terraform apply. The already-reviewed Step 6 restoration plan includes creation of IAM role and policy resources; apply requires explicit human approval. No AWS mutation is part of this planning update.
