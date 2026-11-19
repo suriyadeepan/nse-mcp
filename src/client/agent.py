@@ -106,12 +106,14 @@ class Agent:
         server_url: str = DEFAULT_SERVER_URL,
         model: str = "",
         *,
+        bearer_token: str | None = None,
         openai_client: Any = None,
         max_tool_rounds: int = 3,
     ) -> None:
         if max_tool_rounds < 1:
             raise ValueError("max_tool_rounds must be positive")
         self.server_url = server_url
+        self.bearer_token = bearer_token
         self.model = model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
         self.openai_client = openai_client
         self.max_tool_rounds = max_tool_rounds
@@ -120,7 +122,9 @@ class Agent:
 
     async def connect(self) -> dict[str, Any]:
         """Discover the tools exposed by the server and prepare OpenAI definitions."""
-        self.tools = await discover_tools(self.server_url)
+        self.tools = await discover_tools(
+            self.server_url, bearer_token=self.bearer_token
+        )
         self.openai_tools = to_openai_tools(list(self.tools.values()))
         return self.tools
 
@@ -220,7 +224,9 @@ class Agent:
         messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
         encoding = _token_encoding(self.model)
         remaining_result_tokens = MAX_CONVERSATION_TOOL_RESULT_TOKENS
-        async with connect_to_server(self.server_url) as mcp_client:
+        async with connect_to_server(
+            self.server_url, bearer_token=self.bearer_token
+        ) as mcp_client:
             for _ in range(self.max_tool_rounds):
                 response = await self._request_completion(
                     client,
@@ -314,8 +320,14 @@ def run(
     prompt: str,
     model: str = "",
     *,
+    bearer_token: str | None = None,
     openai_client: Any = None,
 ) -> str:
     """Connect an agent and answer `prompt` using OpenAI and MCP tools."""
-    agent = Agent(server_url, model=model, openai_client=openai_client)
+    agent = Agent(
+        server_url,
+        model=model,
+        bearer_token=bearer_token,
+        openai_client=openai_client,
+    )
     return asyncio.run(agent.run(prompt))

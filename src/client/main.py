@@ -51,12 +51,17 @@ def main() -> None:
 
     try:
         try:
-            server_url, _bearer_token = _resolve_server_config(args.server)
+            server_url, bearer_token = _resolve_server_config(args.server)
         except ValueError as exc:
             parser.error(str(exc))
         from client.agent import run
 
-        answer = run(server_url, args.prompt, model=args.model or "")
+        answer = run(
+            server_url,
+            args.prompt,
+            model=args.model or "",
+            bearer_token=bearer_token,
+        )
     except ConnectionError as exc:
         from client.agent import _redact_secrets
 

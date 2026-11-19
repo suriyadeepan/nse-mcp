@@ -5,8 +5,8 @@ import json
 import os
 import socket
 import sys
-from contextlib import asynccontextmanager
-from types import SimpleNamespace
+from contextlib import asynccontextmanager, contextmanager
+from types import ModuleType, SimpleNamespace
 from typing import Any, AsyncIterator
 
 import pytest
@@ -198,7 +198,9 @@ def test_cli_passes_http_endpoint_prompt_and_prints_answer(monkeypatch, capsys):
     monkeypatch.setenv("MCP_BEARER_TOKEN", "test-bearer-token")
     monkeypatch.setattr(
         "client.agent.run",
-        lambda server, prompt, model: calls.append((server, prompt, model)) or "Price: 123",
+        lambda server, prompt, model, **kwargs: calls.append(
+            (server, prompt, model, kwargs)
+        ) or "Price: 123",
     )
     monkeypatch.setattr(
         client_main,
@@ -209,7 +211,12 @@ def test_cli_passes_http_endpoint_prompt_and_prints_answer(monkeypatch, capsys):
     client_main.main()
 
     assert calls == [
-        ("http://127.0.0.1:9000/mcp", "Show me the latest price", "test-model")
+        (
+            "http://127.0.0.1:9000/mcp",
+            "Show me the latest price",
+            "test-model",
+            {"bearer_token": "test-bearer-token"},
+        )
     ]
     assert capsys.readouterr().out == "Price: 123\n"
 
@@ -348,6 +355,53 @@ async def test_agent_executes_model_selected_tool_and_returns_result_to_openai()
     returned_tool_result = fake_openai.requests[1]["messages"][-1]
     assert returned_tool_result["role"] == "tool"
     assert "AA" in returned_tool_result["content"]
+
+
+@pytest.mark.anyio
+async def test_agent_uses_same_endpoint_and_token_for_discovery_and_execution(
+    monkeypatch,
+):
+    from server.auth import BearerAuthMiddleware
+
+    token = "agent-auth-sentinel-token"
+    monkeypatch.setenv("MCP_BEARER_TOKEN", token)
+
+    class FakeLangfuse:
+        @contextmanager
+        def start_as_current_observation(self, **kwargs):
+            observation = SimpleNamespace(update=lambda **values: None)
+            yield observation
+
+    langfuse = ModuleType("langfuse")
+    langfuse.get_client = lambda: FakeLangfuse()
+    monkeypatch.setitem(sys.modules, "langfuse", langfuse)
+
+    mcp_server = MCPServer("protected-agent")
+    executions = []
+
+    @mcp_server.tool(name="protected_lookup", description="Return a protected value.")
+    def protected_lookup(value: str) -> str:
+        executions.append(value)
+        return f"result:{value}"
+
+    fake_openai = FakeOpenAI(
+        [
+            completion(
+                tool_calls=[
+                    tool_call("call-1", "protected_lookup", '{"value":"ok"}')
+                ]
+            ),
+            completion("Done."),
+        ]
+    )
+    app = BearerAuthMiddleware(mcp_server.streamable_http_app())
+    async with serve_mcp_app(app) as url:
+        agent = Agent(url, bearer_token=token, openai_client=fake_openai)
+        answer = await agent.run("Look up the protected value")
+
+    assert answer == "Done."
+    assert executions == ["ok"]
+    assert len(fake_openai.requests[0]["tools"]) == 1
 
 
 @pytest.mark.anyio

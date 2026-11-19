@@ -269,7 +269,7 @@ async def test_model_and_tool_observations_are_children_of_agent_trace(monkeypat
     openai_client.chat.completions.create = create
 
     @asynccontextmanager
-    async def connect_to_server(_server_url):
+    async def connect_to_server(_server_url, **_kwargs):
         yield object()
 
     async def call_tool(_client, _tool, arguments):

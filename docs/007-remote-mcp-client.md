@@ -20,6 +20,12 @@
 - During implementation, an initial test caught that `Client` must receive the transport context manager, not the yielded stream tuple. The handoff was corrected. The next test run exposed only an assertion mismatch with MCP's structured tool result (`{"result": "result:ok"}`); the regression assertion now matches the returned structured content.
 - `uv run --with pytest pytest tests/test_client.py tests/test_langfuse.py` — 24 passed.
 
+## Agent connection settings
+
+- The CLI now passes its resolved endpoint and bearer token to `run()`. `Agent` retains both settings and supplies them to dynamic tool discovery and the separate execution session, so discovery and all selected tool calls authenticate against the same server. Dynamic tool conversion, argument validation, and the bounded tool-round loop are unchanged.
+- Added a protected ASGI agent regression that completes discovery, invokes a selected tool, and returns the final answer using one endpoint/token configuration.
+- `uv run --with pytest pytest tests/test_client.py tests/test_langfuse.py` — 25 passed, including the existing dynamic discovery, schema validation, tool execution, multi-round, and trace coverage.
+
 ## Verification evidence
 
 - `uv run python --version` — `Python 3.15.2`.
