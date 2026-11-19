@@ -99,7 +99,7 @@ Terraform provisions the ARM64 image Lambda, execution role, scoped runtime poli
 
 MCP DNS rebinding protection allows the deployed Function URL hostname and narrow localhost development patterns. It does not allow arbitrary hosts. This fixed HTTP 421 `Invalid Host header` for authenticated requests while preserving rejection of an unrelated host.
 
-The existing S3 bucket and public access block are detached from Terraform state using `removed` blocks with `destroy = false`; the legacy destroy-time upload cleanup provisioner was removed. A Terraform destroy can remove the Lambda demo resources without deleting the existing bucket or dataset. T12.9 teardown verification has not been run. Dataset uploads remain a separate explicit operation using `scripts/upload_dataset.sh`.
+The existing S3 bucket and public access block are detached from Terraform state using `removed` blocks with `destroy = false`; the legacy destroy-time upload cleanup provisioner was removed. Dataset uploads remain a separate explicit operation using `scripts/upload_dataset.sh`.
 
 ## Local image smoke test
 
@@ -109,7 +109,7 @@ The initial legacy Docker builder attempt failed during image export after a 1.4
 
 ## Deployed verification status
 
-T1–T11 are complete. T12 provisioning, smoke tests, and endpoint output (T12.6–T12.8) are complete. T12.9, teardown with verification that S3 remains intact, is open; no destroy has been run.
+T1–T11 and T12 are complete. After T12.7 smoke testing and T12.8 endpoint verification, `terraform destroy` removed the seven demo resources: Lambda, Function URL, two invoke permissions, IAM role and inline policy, and CloudWatch log group. The post-destroy AWS checks confirmed that the Lambda function, IAM role, and log group were absent and Terraform state was empty. The S3 bucket remained available with all four public access block settings enabled. The `data/processed/` prefix retained all 2,781 objects (326,546,421 bytes), matching the pre-destroy inventory. No dataset upload or deletion was performed.
 
 T12.7 live checks:
 
@@ -128,8 +128,3 @@ The CloudWatch check was completed after `logs:FilterLogEvents` was added to the
 - Host allowlist tests: `uv run --with pytest pytest tests/test_http.py tests/test_lambda.py` — 5 passed.
 - Previous application validation: `uv run --with pytest pytest tests/test_lambda.py tests/test_http.py tests/test_auth.py tests/test_s3_data.py` — 18 passed.
 - Terraform formatting, validation, and mocked tests passed during implementation. The image digest update plan showed only an in-place `aws_lambda_function.mcp.image_uri` change: 0 added, 1 changed, 0 destroyed.
-
-## Task status
-
-- Complete: T1–T11; T12.1–T12.8, including image publication, Lambda provisioning, live smoke tests, and Function URL confirmation.
-- Open: T12.9 — destroy the Lambda demo resources and verify that the S3 bucket, public access settings, and `data/processed` objects remain intact.
