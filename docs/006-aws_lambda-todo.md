@@ -34,7 +34,7 @@ Deploy the existing MCP server and DuckDB analytics layer to AWS Lambda using Te
   - **Depends on:** T1, T3.
 - [x] **T8 — Provision Lambda infrastructure** — Add Terraform configuration in `terraform/main.tf` and `terraform/variables.tf` for an ARM64 container-image Lambda, Function URL, and retained CloudWatch log group. Configure the ECR image URI, function name, memory, timeout, and log retention; attach `aws_iam_role.lambda_execution` and pass the S3 dataset settings to the application. The Function URL allows requests through so T9 can enforce bearer authentication in the app. Verify the deployment plan with `terraform/main.tftest.hcl`. This provisions infrastructure in code; applying it to AWS remains part of end-to-end deployment verification.
   - **Depends on:** T6.4, T7.
-- [ ] **T9 — Protect and expose the endpoint** — Validate a demo bearer token in the application for Function URL requests; reject missing or invalid tokens, and keep credentials out of source control, logs, and errors.
+- [x] **T9 — Protect and expose the endpoint** — Require a configured bearer token for HTTP requests, reject missing or invalid tokens without echoing them, and pass the token to Lambda as a sensitive Terraform input. Verify configured, missing, malformed, and incorrect token behavior in `tests/test_auth.py`.
   - **Depends on:** T5.1, T5.2, T8.
 - [ ] **T10 — Add deployment outputs and teardown** — Add `terraform/outputs.tf` for the deployed MCP endpoint URL and `terraform/terraform.tfvars.example` for safe example settings; configure teardown to remove S3 objects so `terraform destroy` removes all demo resources.
   - **Depends on:** T2, T8.
@@ -83,6 +83,6 @@ The audit found no circular dependency. Local DuckDB-to-S3 development happens i
 - `terraform/iam.tf` — least-privilege Lambda S3 and CloudWatch permissions (T7).
 - `terraform/iam.tftest.hcl` — mocked-provider checks for the execution role, S3 scope, and CloudWatch log scope (T7).
 - `terraform/main.tf`, `terraform/variables.tf`, `terraform/main.tftest.hcl` — Lambda, Function URL, CloudWatch, configurable deployment resources, and mocked-plan coverage (T8).
-- `src/server/` authentication implementation and `terraform/main.tf` Function URL settings — bearer-token protection (T9).
+- `src/server/auth.py`, `tests/test_auth.py`, `terraform/main.tf`, and `terraform/variables.tf` — bearer-token protection and sensitive runtime configuration (T9).
 - `terraform/outputs.tf`, `terraform/terraform.tfvars.example`, `terraform/` teardown configuration — endpoint output, safe example values, and resource cleanup (T10).
 - Terraform deployment, `scripts/upload_dataset.sh`, `tests/test_http.py`, `tests/test_lambda.py`, and AWS runtime checks — end-to-end deployment and teardown verification (T12).

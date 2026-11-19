@@ -30,6 +30,7 @@ run "execution_role_is_lambda_assumable_and_scoped" {
   variables {
     processed_data_bucket = "unit-test-market-data"
     lambda_image_uri      = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/kite-mcp:latest"
+    lambda_bearer_token   = "unit-test-token-with-at-least-32-characters"
     dataset_prefix        = "market/processed"
     lambda_function_name  = "kite-mcp-unit-test"
   }

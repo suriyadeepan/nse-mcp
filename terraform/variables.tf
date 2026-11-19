@@ -36,6 +36,17 @@ variable "lambda_image_uri" {
   }
 }
 
+variable "lambda_bearer_token" {
+  description = "Bearer token required by the MCP HTTP endpoint; supply through a protected tfvars file or secure input"
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(var.lambda_bearer_token) >= 32
+    error_message = "lambda_bearer_token must contain at least 32 characters."
+  }
+}
+
 variable "lambda_memory_size" {
   description = "Lambda memory allocation in MB"
   type        = number

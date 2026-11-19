@@ -35,6 +35,7 @@ run "lambda_uses_image_role_s3_config_and_function_url" {
   variables {
     processed_data_bucket = "unit-test-market-data"
     lambda_image_uri      = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/kite-mcp:latest"
+    lambda_bearer_token   = "unit-test-token-with-at-least-32-characters"
     lambda_function_name  = "kite-mcp-unit-test"
     dataset_prefix        = "market/processed"
   }
@@ -55,8 +56,9 @@ run "lambda_uses_image_role_s3_config_and_function_url" {
       aws_lambda_function.mcp.environment[0].variables.PROCESSED_DATA_SOURCE == "s3",
       aws_lambda_function.mcp.environment[0].variables.PROCESSED_DATA_S3_BUCKET == "unit-test-market-data",
       aws_lambda_function.mcp.environment[0].variables.PROCESSED_DATA_S3_PREFIX == "market/processed",
+      aws_lambda_function.mcp.environment[0].variables.MCP_BEARER_TOKEN == "unit-test-token-with-at-least-32-characters",
     ])
-    error_message = "Lambda must be configured to read the provisioned dataset from S3."
+    error_message = "Lambda must receive the S3 dataset settings and bearer token at runtime."
   }
 
   assert {

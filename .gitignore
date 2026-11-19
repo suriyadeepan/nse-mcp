@@ -25,3 +25,6 @@ logs/
 **/.terraform/
 *.tfstate
 *.tfstate.*
+*.tfvars
+!*.tfvars.example
+*.tfvars.json

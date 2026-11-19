@@ -5,9 +5,11 @@ from contextlib import asynccontextmanager
 import socket
 
 import httpx
+import httpx2
 import pytest
 import uvicorn
 from mcp import Client
+from mcp.client.streamable_http import streamable_http_client
 
 from server import main as server_main
 from server import tools as server_tools
@@ -40,11 +42,18 @@ def anyio_backend():
     return "asyncio"
 
 
+@pytest.fixture(autouse=True)
+def configure_test_bearer_token(monkeypatch):
+    monkeypatch.setenv("MCP_BEARER_TOKEN", "http-test-token-with-at-least-32-chars")
+
+
 @pytest.mark.anyio
 async def test_asgi_app_returns_http_response_for_unknown_route():
     transport = httpx.ASGITransport(app=server_main.app)
     async with httpx.AsyncClient(
-        transport=transport, base_url="http://test"
+        transport=transport,
+        base_url="http://test",
+        headers={"Authorization": "Bearer http-test-token-with-at-least-32-chars"},
     ) as http_client:
         response = await http_client.get("/not-an-mcp-route")
 
@@ -72,32 +81,38 @@ async def test_streamable_http_initializes_lists_tools_and_executes_tool(monkeyp
     monkeypatch.setattr(server_tools.analytics, "get_bars", get_bars)
 
     async with serve_http_app() as base_url:
-        async with Client(f"{base_url}/mcp") as mcp_client:
-            assert mcp_client.server_info.name == "kite-mcp"
-
-            listed = await mcp_client.list_tools()
-            tool_names = {tool.name for tool in listed.tools}
-            assert tool_names == {
-                "get_bars",
-                "intraday_stats",
-                "get_price_extremes",
-                "get_volume_stats",
-                "compute_indicators",
-                "compare_symbols",
-            }
-            assert next(tool for tool in listed.tools if tool.name == "get_bars").input_schema
-
-            result = await mcp_client.call_tool(
-                "get_bars",
-                {
-                    "arguments": {
-                        "symbol": "RELIANCE",
-                        "start_datetime": "2024-01-01T00:00:00Z",
-                        "end_datetime": "2024-01-02T00:00:00Z",
-                        "limit": 10,
-                    }
-                },
+        async with httpx2.AsyncClient(
+            headers={"Authorization": "Bearer http-test-token-with-at-least-32-chars"}
+        ) as authorized_http_client:
+            transport = streamable_http_client(
+                f"{base_url}/mcp", http_client=authorized_http_client
             )
+            async with Client(transport) as mcp_client:
+                assert mcp_client.server_info.name == "kite-mcp"
+
+                listed = await mcp_client.list_tools()
+                tool_names = {tool.name for tool in listed.tools}
+                assert tool_names == {
+                    "get_bars",
+                    "intraday_stats",
+                    "get_price_extremes",
+                    "get_volume_stats",
+                    "compute_indicators",
+                    "compare_symbols",
+                }
+                assert next(tool for tool in listed.tools if tool.name == "get_bars").input_schema
+
+                result = await mcp_client.call_tool(
+                    "get_bars",
+                    {
+                        "arguments": {
+                            "symbol": "RELIANCE",
+                            "start_datetime": "2024-01-01T00:00:00Z",
+                            "end_datetime": "2024-01-02T00:00:00Z",
+                            "limit": 10,
+                        }
+                    },
+                )
 
     assert result.is_error is False
     assert result.structured_content == {
