@@ -128,3 +128,16 @@ The CloudWatch check was completed after `logs:FilterLogEvents` was added to the
 - Host allowlist tests: `uv run --with pytest pytest tests/test_http.py tests/test_lambda.py` — 5 passed.
 - Previous application validation: `uv run --with pytest pytest tests/test_lambda.py tests/test_http.py tests/test_auth.py tests/test_s3_data.py` — 18 passed.
 - Terraform formatting, validation, and mocked tests passed during implementation. The image digest update plan showed only an in-place `aws_lambda_function.mcp.image_uri` change: 0 added, 1 changed, 0 destroyed.
+
+## Step 7 endpoint restoration plan review (2026-11-19)
+
+Read-only AWS checks confirmed that the `kite-mcp` Lambda function, `kite-mcp-execution` IAM role, and `/aws/lambda/kite-mcp` log group are absent. The local Terraform state has no managed resources. The S3 prefix `s3://nse-mcp-data/data/processed/` still contains 2,781 objects totaling 326,546,421 bytes.
+
+`terraform -chdir=terraform plan -no-color -out=/tmp/kite-mcp-t008.tfplan` planned these seven creates: `aws_cloudwatch_log_group.lambda`, `aws_iam_role.lambda_execution`, `aws_iam_role_policy.lambda_runtime`, `aws_lambda_function.mcp`, `aws_lambda_function_url.mcp`, `aws_lambda_permission.function_url`, and `aws_lambda_permission.function_url_invoke`. There are no S3 resource changes, upload/deletion provisioners, or dataset mutations in the plan. The S3 bucket appears only as a read-only data source.
+
+The IAM changes in that plan are:
+
+- `aws_iam_role.lambda_execution` (`kite-mcp-execution`): trust policy allows `sts:AssumeRole` by `lambda.amazonaws.com`.
+- `aws_iam_role_policy.lambda_runtime` (`kite-mcp-runtime`): `s3:ListBucket` on `arn:aws:s3:::nse-mcp-data`, restricted to `data/processed` and its descendants; `s3:GetObject` on `arn:aws:s3:::nse-mcp-data/data/processed/*`; `logs:CreateLogGroup` on `arn:aws:logs:ap-south-1:<account>:log-group:/aws/lambda/kite-mcp`; and `logs:CreateLogStream` plus `logs:PutLogEvents` on that log group’s `:log-stream:*` resources.
+
+Verification commands: `terraform -chdir=terraform state list` (empty); `aws lambda get-function-configuration --function-name kite-mcp --region ap-south-1` (function not found); `aws iam get-role --role-name kite-mcp-execution` (role not found); `aws logs describe-log-groups --log-group-name-prefix /aws/lambda/kite-mcp --region ap-south-1` (empty); `aws s3api list-objects-v2 --bucket nse-mcp-data --prefix data/processed/ --query '[length(Contents[]),sum(Contents[].Size)]'` (2,781; 326,546,421); `terraform -chdir=terraform test` (2 passed); and the read-only Terraform plan above. The saved plan file is local under `/tmp` and is not committed. No apply was run. Human approval is required before applying this plan, including its IAM role and policy creation.
