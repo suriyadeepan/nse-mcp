@@ -36,7 +36,7 @@ Deploy the existing MCP server and DuckDB analytics layer to AWS Lambda using Te
   - **Depends on:** T6.4, T7.
 - [x] **T9 — Protect and expose the endpoint** — Require a configured bearer token for HTTP requests, reject missing or invalid tokens without echoing them, and pass the token to Lambda as a sensitive Terraform input. Verify configured, missing, malformed, and incorrect token behavior in `tests/test_auth.py`.
   - **Depends on:** T5.1, T5.2, T8.
-- [ ] **T10 — Add deployment outputs and teardown** — Add `terraform/outputs.tf` for the deployed MCP endpoint URL and `terraform/terraform.tfvars.example` for safe example settings; configure teardown to remove S3 objects so `terraform destroy` removes all demo resources.
+- [x] **T10 — Add deployment outputs and teardown** — Output the MCP endpoint URL and provide safe example settings. Terraform removes uploaded objects under the configured dataset prefix during destroy; see [T10 deployment notes](006-aws_lambda-T10-docu.md).
   - **Depends on:** T2, T8.
 - [ ] **T11 — Cover Lambda and HTTP behavior** — Add `tests/test_lambda.py` to verify Lambda/Streamable HTTP integration, authentication, and direct role-authenticated S3 querying without exposing credentials.
   - **Depends on:** T3, T4, T5.1, T5.2, T5.3, T7, T8, T9.
@@ -85,4 +85,5 @@ The audit found no circular dependency. Local DuckDB-to-S3 development happens i
 - `terraform/main.tf`, `terraform/variables.tf`, `terraform/main.tftest.hcl` — Lambda, Function URL, CloudWatch, configurable deployment resources, and mocked-plan coverage (T8).
 - `src/server/auth.py`, `tests/test_auth.py`, `terraform/main.tf`, and `terraform/variables.tf` — bearer-token protection and sensitive runtime configuration (T9).
 - `terraform/outputs.tf`, `terraform/terraform.tfvars.example`, `terraform/` teardown configuration — endpoint output, safe example values, and resource cleanup (T10).
+- `docs/006-aws_lambda-T10-docu.md` — endpoint output, example configuration, cleanup process, and validation results (T10).
 - Terraform deployment, `scripts/upload_dataset.sh`, `tests/test_http.py`, `tests/test_lambda.py`, and AWS runtime checks — end-to-end deployment and teardown verification (T12).

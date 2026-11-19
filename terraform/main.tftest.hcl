@@ -20,6 +20,14 @@ run "lambda_uses_image_role_s3_config_and_function_url" {
     }
   }
 
+  override_resource {
+    target          = aws_lambda_function_url.mcp
+    override_during = plan
+    values = {
+      function_url = "https://unit-test.lambda-url.ap-south-1.on.aws/"
+    }
+  }
+
   override_data {
     target          = data.aws_partition.current
     override_during = plan
@@ -76,5 +84,10 @@ run "lambda_uses_image_role_s3_config_and_function_url" {
       aws_cloudwatch_log_group.lambda.retention_in_days == 14,
     ])
     error_message = "Lambda logs must use a function-specific CloudWatch log group with configurable retention."
+  }
+
+  assert {
+    condition     = output.mcp_endpoint_url == "https://unit-test.lambda-url.ap-south-1.on.aws/mcp"
+    error_message = "Terraform must output the MCP Streamable HTTP endpoint path."
   }
 }

@@ -60,3 +60,30 @@ def test_upload_rejects_empty_dataset_before_calling_aws_cli(tmp_path: Path, mon
 
     with pytest.raises(ValueError, match="no Parquet files"):
         upload_processed_data.upload_dataset(data_dir, "market-data", "data/processed")
+
+
+def test_delete_removes_only_normalized_dataset_prefix(monkeypatch):
+    commands = []
+    monkeypatch.setattr(
+        upload_processed_data.subprocess,
+        "run",
+        lambda command, check: commands.append((command, check)),
+    )
+
+    upload_processed_data.delete_dataset("market-data", "/dataset/processed/")
+
+    assert commands == [
+        (["aws", "s3", "rm", "s3://market-data/dataset/processed", "--recursive"], True)
+    ]
+
+
+@pytest.mark.parametrize("bucket,prefix", [("market-data", "/"), ("market/data", "dataset")])
+def test_delete_rejects_bucket_wide_or_malformed_scope(bucket, prefix, monkeypatch):
+    monkeypatch.setattr(
+        upload_processed_data.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("AWS CLI must not run for unsafe delete scope"),
+    )
+
+    with pytest.raises(ValueError):
+        upload_processed_data.delete_dataset(bucket, prefix)

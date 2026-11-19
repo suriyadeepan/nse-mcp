@@ -9,7 +9,11 @@ locals {
 # Keep object creation in the deployment flow while letting the AWS CLI sync
 # preserve every Hive partition path as the corresponding S3 key.
 resource "terraform_data" "processed_data_upload" {
-  input = local.processed_dataset_hash
+  input = {
+    dataset_hash = local.processed_dataset_hash
+    bucket       = var.processed_data_bucket
+    prefix       = var.dataset_prefix
+  }
 
   triggers_replace = [
     local.processed_dataset_hash,
@@ -29,5 +33,14 @@ resource "terraform_data" "processed_data_upload" {
       "--prefix",
       var.dataset_prefix,
     ])
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "python3 ${path.module}/../scripts/upload_processed_data.py --delete"
+    environment = {
+      S3_BUCKET = self.input.bucket
+      S3_PREFIX = self.input.prefix
+    }
   }
 }

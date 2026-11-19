@@ -51,13 +51,34 @@ def upload_dataset(data_dir: str | Path, bucket: str, prefix: str) -> None:
     )
 
 
+def delete_dataset(bucket: str, prefix: str) -> None:
+    """Remove only the configured dataset prefix from S3."""
+    normalized_prefix = prefix.strip("/")
+    if not bucket or "/" in bucket or not normalized_prefix:
+        raise ValueError("bucket and a non-empty dataset prefix are required")
+    subprocess.run(
+        ["aws", "s3", "rm", f"s3://{bucket}/{normalized_prefix}", "--recursive"],
+        check=True,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", default="data/processed")
-    parser.add_argument("--bucket", required=True)
+    parser.add_argument("--bucket", default=None)
     parser.add_argument("--prefix", default="data/processed")
+    parser.add_argument("--delete", action="store_true")
     args = parser.parse_args()
-    upload_dataset(args.data_dir, args.bucket, args.prefix)
+    import os
+
+    bucket = args.bucket or os.environ.get("S3_BUCKET")
+    prefix = os.environ.get("S3_PREFIX", args.prefix)
+    if not bucket:
+        parser.error("--bucket or S3_BUCKET is required")
+    if args.delete:
+        delete_dataset(bucket, prefix)
+    else:
+        upload_dataset(args.data_dir, bucket, prefix)
 
 
 if __name__ == "__main__":
