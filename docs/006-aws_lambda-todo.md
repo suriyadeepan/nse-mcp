@@ -38,9 +38,15 @@ Deploy the existing MCP server and DuckDB analytics layer to AWS Lambda using Te
   - **Depends on:** T5.1, T5.2, T8.
 - [x] **T10 — Add deployment outputs and teardown** — Output the MCP endpoint URL and provide safe example settings. Terraform removes uploaded objects under the configured dataset prefix during destroy; see [T10 deployment notes](006-aws_lambda-T10-docu.md).
   - **Depends on:** T2, T8.
-- [x] **T11 — Cover Lambda and HTTP behavior** — Verify authenticated Streamable HTTP tool execution, rejected unauthenticated requests, and S3 query configuration through the execution-role credential chain without static keys; see [T11 test record](006-aws_lambda-T11-docu.md).
+- [x] **T11 — Cover Lambda and HTTP behavior** — Add `tests/test_lambda.py` to verify Lambda/Streamable HTTP integration, authentication, and direct role-authenticated S3 querying without exposing credentials.
   - **Depends on:** T3, T4, T5.1, T5.2, T5.3, T7, T8, T9.
-- [ ] **T12 — Verify deployment end to end** — Confirm Terraform creates infrastructure and uploads the full dataset, Lambda queries it with partition pruning, authenticated remote MCP requests work while unauthenticated requests fail, CloudWatch captures execution logs, Terraform outputs the endpoint, and destroy removes demo resources.
+- [ ] **T12 — Verify deployment end to end** — Verify the complete AWS deployment using the existing dataset already uploaded to S3 in T2; do not upload it again. The request middleware logs method, path, and status without headers or query strings. See [T12 verification record](006-aws_lambda-T12-docu.md). Complete the live checks below:
+    - Terraform successfully provisions the Lambda function, Function URL, IAM resources, and CloudWatch log group.
+    - Lambda queries the existing S3-backed dataset successfully and uses partition pruning (for example, a RELIANCE query for January 2026 reads only the relevant symbol/date partitions, not the entire dataset).
+    - Authenticated remote MCP requests with the correct bearer token succeed; requests with a missing or incorrect token are rejected with HTTP 401.
+    - CloudWatch captures Lambda execution logs, including request activity and errors, without exposing bearer tokens or other credentials.
+    - terraform output returns the deployed MCP Function URL.
+    - terraform destroy removes the demo AWS resources, including Lambda, Function URL, IAM resources, CloudWatch log group, and uploaded S3 objects under the configured dataset prefix.
   - **Depends on:** T1–T4, T5.1–T5.3, T6.1–T6.4, T7–T11.
 
 ## Dependency mapping and audit
@@ -86,5 +92,5 @@ The audit found no circular dependency. Local DuckDB-to-S3 development happens i
 - `src/server/auth.py`, `tests/test_auth.py`, `terraform/main.tf`, and `terraform/variables.tf` — bearer-token protection and sensitive runtime configuration (T9).
 - `terraform/outputs.tf`, `terraform/terraform.tfvars.example`, `terraform/` teardown configuration — endpoint output, safe example values, and resource cleanup (T10).
 - `docs/006-aws_lambda-T10-docu.md` — endpoint output, example configuration, cleanup process, and validation results (T10).
-- `tests/test_lambda.py`, `docs/006-aws_lambda-T11-docu.md` — authenticated Lambda HTTP/tool integration, role credential-chain query configuration, and test results (T11).
+- `docs/006-aws_lambda-T12-docu.md`, `src/server/auth.py`, and `tests/test_lambda.py` — request logging without credentials, authenticated MCP execution, and rejection behavior (T12).
 - Terraform deployment, `scripts/upload_dataset.sh`, `tests/test_http.py`, `tests/test_lambda.py`, and AWS runtime checks — end-to-end deployment and teardown verification (T12).

@@ -21,7 +21,8 @@ def anyio_backend():
 
 
 @pytest.mark.anyio
-async def test_lambda_http_requires_auth_and_executes_mcp_tool(monkeypatch):
+async def test_lambda_http_requires_auth_and_executes_mcp_tool(monkeypatch, caplog):
+    caplog.set_level("INFO", logger="server.auth")
     token = "lambda-test-token-with-at-least-32-characters"
     monkeypatch.setenv("MCP_BEARER_TOKEN", token)
     expected = {
@@ -57,6 +58,15 @@ async def test_lambda_http_requires_auth_and_executes_mcp_tool(monkeypatch):
         assert response.status_code == 401
         assert token not in response.text
 
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=lambda_app),
+            base_url="http://127.0.0.1:8000",
+            headers={"Authorization": "Bearer incorrect-test-token"},
+        ) as incorrectly_authenticated:
+            response = await incorrectly_authenticated.get("/mcp")
+        assert response.status_code == 401
+        assert "incorrect-test-token" not in response.text
+
         async with httpx2.AsyncClient(
             transport=httpx2.ASGITransport(app=lambda_app),
             base_url="http://127.0.0.1:8000",
@@ -85,6 +95,11 @@ async def test_lambda_http_requires_auth_and_executes_mcp_tool(monkeypatch):
     assert result.structured_content == expected
     assert len(calls) == 1
     assert calls[0]["symbol"] == "AAA"
+    log_output = " ".join(record.getMessage() for record in caplog.records)
+    assert "HTTP request rejected: method=GET path=/mcp status=401" in log_output
+    assert "HTTP request authorized: method=POST path=/mcp status=200" in log_output
+    assert token not in log_output
+    assert "incorrect-test-token" not in log_output
 
 
 def test_lambda_s3_query_uses_execution_role_credential_chain(monkeypatch):

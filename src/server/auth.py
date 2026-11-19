@@ -2,11 +2,13 @@
 
 import hmac
 import json
+import logging
 import os
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 ASGIApp = Callable[[dict[str, Any], Callable[..., Awaitable[None]], Callable[..., Awaitable[None]]], Awaitable[None]]
+logger = logging.getLogger(__name__)
 
 
 class BearerAuthMiddleware:
@@ -23,14 +25,28 @@ class BearerAuthMiddleware:
 
         configured_token = os.environ.get(self.token_env, "")
         supplied_token = self._bearer_token(scope)
+        method = scope.get("method", "")
+        path = scope.get("path", "")
         if not configured_token:
+            logger.error("HTTP request rejected: method=%s path=%s status=503", method, path)
             await self._respond(send, 503, "Authentication is not configured")
             return
         if supplied_token is None or not hmac.compare_digest(supplied_token, configured_token):
+            logger.warning("HTTP request rejected: method=%s path=%s status=401", method, path)
             await self._respond(send, 401, "Unauthorized")
             return
 
-        await self.app(scope, receive, send)
+        async def log_response(message: dict[str, Any]) -> None:
+            if message["type"] == "http.response.start":
+                logger.info(
+                    "HTTP request authorized: method=%s path=%s status=%s",
+                    method,
+                    path,
+                    message["status"],
+                )
+            await send(message)
+
+        await self.app(scope, receive, log_response)
 
     @staticmethod
     def _bearer_token(scope: dict[str, Any]) -> str | None:
