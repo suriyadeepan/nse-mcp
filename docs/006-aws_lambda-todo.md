@@ -30,9 +30,9 @@ Deploy the existing MCP server and DuckDB analytics layer to AWS Lambda using Te
 - [x] **T6.4 — Smoke-test Lambda container locally** — Manually verified successful startup and MCP initialization through an RIE invocation using the ARM64 (`linux/arm64`) image. Direct HTTP testing also verified MCP tool discovery and a `compare_symbols` call against the S3-backed dataset. See [the smoke-test record](006-aws_lambda-smoke-test-docu.md). No AWS deployment required.
 
   - **Depends on:** T5.3, T6.3.
-- [ ] **T7 — Apply least-privilege IAM** — Add `terraform/iam.tf` granting Lambda read-only access to the configured dataset prefix and required CloudWatch log permissions; use the execution role for S3 authentication.
+- [x] **T7 — Give Lambda only the AWS permissions it needs (IAM)** — Add `terraform/iam.tf` with a Lambda execution role, which is like a limited work badge the function uses when it runs. Let it read the dataset files under the configured S3 prefix and write its logs to CloudWatch. Keep these permissions scoped to that dataset and those logs; Lambda must not need saved AWS access keys. The application uses the role automatically to access S3. Verify the trust policy and permission scope with `terraform/iam.tftest.hcl`.
   - **Depends on:** T1, T3.
-- [ ] **T8 — Provision Lambda infrastructure** — Add Terraform configuration in `terraform/main.tf` and `terraform/variables.tf` for Lambda, Function URL, and CloudWatch logging, with configurable deployment values. S3 bucket provisioning is covered by T2.
+- [ ] **T8 — Provision Lambda infrastructure** — Add Terraform configuration in `terraform/main.tf` and `terraform/variables.tf` for Lambda, Function URL, and CloudWatch logging, with configurable deployment values. Attach `aws_iam_role.lambda_execution` and use the shared `lambda_function_name` so the role and log permissions match the function. S3 bucket provisioning is covered by T2.
   - **Depends on:** T6.4, T7.
 - [ ] **T9 — Protect and expose the endpoint** — Validate a demo bearer token in the application for Function URL requests; reject missing or invalid tokens, and keep credentials out of source control, logs, and errors.
   - **Depends on:** T5.1, T5.2, T8.
@@ -58,7 +58,7 @@ Deploy the existing MCP server and DuckDB analytics layer to AWS Lambda using Te
 | T6.2 | T6.1, T5.3 | Builds the application image after dependencies and HTTP integration are defined. |
 | T6.3 | T6.1, T6.2 | Builds the local ARM64 Lambda container using the configured dependencies and image definition. |
 | T6.4 | T5.3, T6.3 | Uses RIE to verify that the ARM64 container starts and serves MCP requests locally. |
-| T7 | T1, T3 | IAM must grant access to the configured prefix and support the reader's execution-role authentication. |
+| T7 | T1, T3 | The dataset location and S3 reader determine which data Lambda needs to read; the execution role gives it that access without stored keys. |
 | T8 | T6.4, T7 | Lambda infrastructure needs a locally tested container and its execution role. |
 | T9 | T5.1, T5.2, T8 | Application authentication protects the Streamable HTTP application exposed through the Function URL. |
 | T10 | T2, T8 | Outputs describe deployed resources; teardown must remove the uploaded objects and Lambda resources. |
@@ -81,6 +81,7 @@ The audit found no circular dependency. Local DuckDB-to-S3 development happens i
 - `docs/006-aws_lambda-smoke-test-docu.md` — manual local ARM64 container and RIE verification record (T6.4).
 - `tests/test_lambda.py` — Lambda/HTTP/authentication and role-authenticated S3 coverage (T11).
 - `terraform/iam.tf` — least-privilege Lambda S3 and CloudWatch permissions (T7).
+- `terraform/iam.tftest.hcl` — mocked-provider checks for the execution role, S3 scope, and CloudWatch log scope (T7).
 - `terraform/main.tf`, `terraform/variables.tf` — Lambda, Function URL, CloudWatch, and configurable deployment resources (T8).
 - `src/server/` authentication implementation and `terraform/main.tf` Function URL settings — bearer-token protection (T9).
 - `terraform/outputs.tf`, `terraform/terraform.tfvars.example`, `terraform/` teardown configuration — endpoint output, safe example values, and resource cleanup (T10).
