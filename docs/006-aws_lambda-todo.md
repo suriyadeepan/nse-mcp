@@ -30,24 +30,30 @@ Deploy the existing MCP server and DuckDB analytics layer to AWS Lambda using Te
 - [x] **T6.4 — Smoke-test Lambda container locally** — Manually verified successful startup and MCP initialization through an RIE invocation using the ARM64 (`linux/arm64`) image. Direct HTTP testing also verified MCP tool discovery and a `compare_symbols` call against the S3-backed dataset. See [the smoke-test record](006-aws_lambda-smoke-test-docu.md). No AWS deployment required.
 
   - **Depends on:** T5.3, T6.3.
+- [x] **T6.5 — Publish the tested image to ECR** — Publish the tested ARM64 image with [`scripts/deploy_lambda.sh`](../scripts/deploy_lambda.sh) and [`scripts/push_lambda.sh`](../scripts/push_lambda.sh). Verified `025232685609.dkr.ecr.ap-south-1.amazonaws.com/kite-mcp:latest` at digest `sha256:59dc577616d61164bdb0fe59c385c46fe7024e162d772bc77de2768c594ab466`. See [T6.5 process and results](006-aws_lambda-T6.5-docu.md).
+  - **Depends on:** T2, T6.3, T6.4.
 - [x] **T7 — Give Lambda only the AWS permissions it needs (IAM)** — Add `terraform/iam.tf` with a Lambda execution role, which is like a limited work badge the function uses when it runs. Let it read the dataset files under the configured S3 prefix and write its logs to CloudWatch. Keep these permissions scoped to that dataset and those logs; Lambda must not need saved AWS access keys. The application uses the role automatically to access S3. Verify the trust policy and permission scope with `terraform/iam.tftest.hcl`.
   - **Depends on:** T1, T3.
-- [x] **T8 — Provision Lambda infrastructure** — Add Terraform configuration in `terraform/main.tf` and `terraform/variables.tf` for an ARM64 container-image Lambda, Function URL, and retained CloudWatch log group. Configure the ECR image URI, function name, memory, timeout, and log retention; attach `aws_iam_role.lambda_execution` and pass the S3 dataset settings to the application. The Function URL allows requests through so T9 can enforce bearer authentication in the app. Verify the deployment plan with `terraform/main.tftest.hcl`. This provisions infrastructure in code; applying it to AWS remains part of end-to-end deployment verification.
-  - **Depends on:** T6.4, T7.
+- [x] **T8 — Provision Lambda infrastructure** — Add Terraform configuration in `terraform/main.tf` and `terraform/variables.tf` for an ARM64 container-image Lambda, Function URL, and retained CloudWatch log group. Configure the pushed ECR image URI, function name, memory, timeout, and log retention; attach `aws_iam_role.lambda_execution` and pass the S3 dataset settings to the application. The Function URL allows requests through so T9 can enforce bearer authentication in the app. Verify the deployment plan with `terraform/main.tftest.hcl`. This provisions infrastructure in code; applying it to AWS remains part of end-to-end deployment verification.
+  - **Depends on:** T6.5, T7.
 - [x] **T9 — Protect and expose the endpoint** — Require a configured bearer token for HTTP requests, reject missing or invalid tokens without echoing them, and pass the token to Lambda as a sensitive Terraform input. Verify configured, missing, malformed, and incorrect token behavior in `tests/test_auth.py`.
   - **Depends on:** T5.1, T5.2, T8.
 - [x] **T10 — Add deployment outputs and teardown** — Output the MCP endpoint URL and provide safe example settings. Terraform removes uploaded objects under the configured dataset prefix during destroy; see [T10 deployment notes](006-aws_lambda-T10-docu.md).
   - **Depends on:** T2, T8.
 - [x] **T11 — Cover Lambda and HTTP behavior** — Add `tests/test_lambda.py` to verify Lambda/Streamable HTTP integration, authentication, and direct role-authenticated S3 querying without exposing credentials.
   - **Depends on:** T3, T4, T5.1, T5.2, T5.3, T7, T8, T9.
-- [ ] **T12 — Verify deployment end to end** — Verify the complete AWS deployment using the existing dataset already uploaded to S3 in T2; do not upload it again. The request middleware logs method, path, and status without headers or query strings. See [T12 verification record](006-aws_lambda-T12-docu.md). Complete the live checks below:
-    - Terraform successfully provisions the Lambda function, Function URL, IAM resources, and CloudWatch log group.
-    - Lambda queries the existing S3-backed dataset successfully and uses partition pruning (for example, a RELIANCE query for January 2026 reads only the relevant symbol/date partitions, not the entire dataset).
-    - Authenticated remote MCP requests with the correct bearer token succeed; requests with a missing or incorrect token are rejected with HTTP 401.
-    - CloudWatch captures Lambda execution logs, including request activity and errors, without exposing bearer tokens or other credentials.
-    - terraform output returns the deployed MCP Function URL.
-    - terraform destroy removes the demo AWS resources, including Lambda, Function URL, IAM resources, CloudWatch log group, and uploaded S3 objects under the configured dataset prefix.
-  - **Depends on:** T1–T4, T5.1–T5.3, T6.1–T6.4, T7–T11.
+- [ ] **T12 — Verify deployment end to end** — Verify the complete AWS deployment using the existing dataset already uploaded to S3 in T2; do not upload it again. See [T12 verification record](006-aws_lambda-T12-docu.md).
+    - [x] Local Terraform format, validation, and both mocked plan tests pass.
+    - [x] The existing T2 dataset is retained as the deployment input; no upload script was run for T12.
+    - [x] Local authenticated MCP tool execution succeeds; requests with missing or incorrect bearer tokens return HTTP 401.
+    - [x] Application logs request method, path, and status without headers, query strings, or bearer tokens; local tests verify this.
+    1. [ ] Provision the Lambda function, Function URL, IAM resources, and CloudWatch log group in AWS.
+    2. [ ] Query the existing S3 dataset from Lambda and verify partition pruning (for example, a RELIANCE query for January 2026 reads only relevant partitions).
+    3. [ ] Test authenticated and rejected requests against the deployed endpoint; missing and incorrect bearer tokens must return HTTP 401.
+    4. [ ] Inspect CloudWatch request/error logs and confirm they contain no bearer tokens or other credentials.
+    5. [ ] Confirm `terraform output` returns the deployed MCP Function URL.
+    6. [ ] Run `terraform destroy` and verify demo resources and objects under the configured dataset prefix are removed.
+  - **Depends on:** T1–T4, T5.1–T5.3, T6.1–T6.5, T7–T11.
 
 ## Dependency mapping and audit
 
@@ -64,12 +70,13 @@ Deploy the existing MCP server and DuckDB analytics layer to AWS Lambda using Te
 | T6.2 | T6.1, T5.3 | Builds the application image after dependencies and HTTP integration are defined. |
 | T6.3 | T6.1, T6.2 | Builds the local ARM64 Lambda container using the configured dependencies and image definition. |
 | T6.4 | T5.3, T6.3 | Uses RIE to verify that the ARM64 container starts and serves MCP requests locally. |
+| T6.5 | T2, T6.3, T6.4 | Publishes the tested ARM64 image to the regional ECR repository and records its URI for Lambda provisioning. |
 | T7 | T1, T3 | The dataset location and S3 reader determine which data Lambda needs to read; the execution role gives it that access without stored keys. |
-| T8 | T6.4, T7 | Lambda infrastructure needs a locally tested container and its execution role. |
+| T8 | T6.5, T7 | Lambda infrastructure needs the published image URI and its execution role. |
 | T9 | T5.1, T5.2, T8 | Application authentication protects the Streamable HTTP application exposed through the Function URL. |
 | T10 | T2, T8 | Outputs describe deployed resources; teardown must remove the uploaded objects and Lambda resources. |
 | T11 | T3, T4, T5.1, T5.2, T5.3, T7, T8, T9 | Lambda integration tests require the reader, partitioned queries, tested HTTP server, role, endpoint, and authentication. |
-| T12 | T1–T4, T5.1–T5.3, T6.1–T6.4, T7–T11 | End-to-end verification exercises the complete deployment and teardown path. |
+| T12 | T1–T4, T5.1–T5.3, T6.1–T6.5, T7–T11 | End-to-end verification exercises the complete deployment and teardown path. |
 
 The audit found no circular dependency. Local DuckDB-to-S3 development happens in T3 using AWS CLI credentials, before Lambda provisioning in T8; T7 then supplies the Lambda execution role used by the deployed reader. AWS identity and bucket access are explicit prerequisites within T2. The test and end-to-end tasks depend on all components they exercise.
 
@@ -85,6 +92,7 @@ The audit found no circular dependency. Local DuckDB-to-S3 development happens i
 - `Dockerfile.lambda` — Python 3.14 application image with DuckDB native libraries for the selected architecture (T6.2).
 - `scripts/build_lambda.sh`, `.dockerignore`, `Dockerfile.lambda` — local ARM64 Lambda container build with a focused Docker build context (T6.3).
 - `docs/006-aws_lambda-smoke-test-docu.md` — manual local ARM64 container and RIE verification record (T6.4).
+- `scripts/deploy_lambda.sh`, `scripts/push_lambda.sh`, `docs/006-aws_lambda-T6.5-docu.md` — ECR repository setup, authentication, tested image tagging/push, digest verification, and status (T6.5).
 - `tests/test_lambda.py` — Lambda/HTTP/authentication and role-authenticated S3 coverage (T11).
 - `terraform/iam.tf` — least-privilege Lambda S3 and CloudWatch permissions (T7).
 - `terraform/iam.tftest.hcl` — mocked-provider checks for the execution role, S3 scope, and CloudWatch log scope (T7).
