@@ -32,6 +32,12 @@
 - `uv run --with pytest pytest tests/test_client.py` — 17 passed.
 - `uv run --with pytest pytest tests/test_client.py tests/test_langfuse.py` — 27 passed.
 
+## Langfuse remote credential redaction
+
+- Trace redaction now receives the agent's configured bearer token as an exact secret in addition to the existing credential-pattern filters. The configured value is removed from query, model request/response, tool input/result, final-answer, and error observations even when it appears without a `Bearer` prefix.
+- Extended the trace hierarchy test with remote URL userinfo and query sentinels, a configured bearer sentinel echoed in the query/tool result/final answer, and assertions that all expected observations remain while none of those secrets appear in serialized trace data. The test also confirms the same remote endpoint and bearer token are passed to the MCP execution session.
+- `uv run --with pytest pytest tests/test_client.py tests/test_langfuse.py` — 27 passed.
+
 ## Verification evidence
 
 - `uv run python --version` — `Python 3.15.2`.

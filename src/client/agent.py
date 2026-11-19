@@ -33,7 +33,7 @@ _SECRET_PATTERNS = (
 )
 
 
-def _redact_secrets(value: Any) -> Any:
+def _redact_secrets(value: Any, extra_secrets: tuple[str, ...] = ()) -> Any:
     """Redact credential-like strings recursively before logging or tracing."""
     if isinstance(value, dict):
         return {
@@ -43,13 +43,13 @@ def _redact_secrets(value: Any) -> Any:
                 r"(?i)(?:api[_-]?key|token|auth(?:orization)?|secret|password)",
                 key,
             )
-            else _redact_secrets(item)
+            else _redact_secrets(item, extra_secrets)
             for key, item in value.items()
         }
     if isinstance(value, list):
-        return [_redact_secrets(item) for item in value]
+        return [_redact_secrets(item, extra_secrets) for item in value]
     if isinstance(value, tuple):
-        return tuple(_redact_secrets(item) for item in value)
+        return tuple(_redact_secrets(item, extra_secrets) for item in value)
     if isinstance(value, str):
         for pattern in _SECRET_PATTERNS:
             value = pattern.sub(
@@ -57,16 +57,21 @@ def _redact_secrets(value: Any) -> Any:
                 + "[REDACTED]",
                 value,
             )
+        for secret in extra_secrets:
+            if secret:
+                value = value.replace(secret, "[REDACTED]")
         return value
     return value
 
 
-def _safe_error(exc: Exception) -> Exception:
+def _safe_error(
+    exc: Exception, extra_secrets: tuple[str, ...] = ()
+) -> Exception:
     """Create a trace-safe error without retaining the original exception chain."""
     try:
-        return type(exc)(str(_redact_secrets(str(exc))))
+        return type(exc)(str(_redact_secrets(str(exc), extra_secrets)))
     except Exception:
-        return RuntimeError(str(_redact_secrets(str(exc))))
+        return RuntimeError(str(_redact_secrets(str(exc), extra_secrets)))
 
 
 def _token_encoding(model: str) -> Any:
@@ -139,30 +144,35 @@ class Agent:
             name="openai-chat-completion",
             model=request["model"],
             input=_redact_secrets(
-                {key: value for key, value in request.items() if key != "model"}
+                {key: value for key, value in request.items() if key != "model"},
+                (self.bearer_token or "",),
             ),
         ) as generation:
             try:
                 response = await client.chat.completions.create(**request)
             except Exception as exc:
-                safe_error = _safe_error(exc)
+                safe_error = _safe_error(exc, (self.bearer_token or "",))
                 generation.update(output={"error": str(safe_error)})
                 raise safe_error from None
             latency_ms = (perf_counter() - started) * 1000
             message = response.choices[0].message
             output = {
-                "content": _redact_secrets(message.content),
+                "content": _redact_secrets(
+                    message.content, (self.bearer_token or "",)
+                ),
                 "tool_calls": [
                     {
                         "id": call.id,
                         "name": call.function.name,
-                        "arguments": _redact_secrets(call.function.arguments),
+                        "arguments": _redact_secrets(
+                            call.function.arguments, (self.bearer_token or "",)
+                        ),
                     }
                     for call in (message.tool_calls or [])
                 ],
             }
             update: dict[str, Any] = {
-                "output": _redact_secrets(output),
+                "output": _redact_secrets(output, (self.bearer_token or "",)),
                 "metadata": {"latency_ms": latency_ms},
             }
             usage = getattr(response, "usage", None)
@@ -194,7 +204,9 @@ class Agent:
         with langfuse.start_as_current_observation(
             as_type="tool",
             name=f"mcp-tool:{name}",
-            input=_redact_secrets({"arguments": arguments}),
+            input=_redact_secrets(
+                {"arguments": arguments}, (self.bearer_token or "",)
+            ),
         ) as observation:
             try:
                 tool = self.tools.get(name)
@@ -211,10 +223,12 @@ class Agent:
                         ) from exc
                 result = await call_tool(client, tool, arguments)
             except (ToolArgumentError, ToolExecutionError) as exc:
-                safe_error = _safe_error(exc)
+                safe_error = _safe_error(exc, (self.bearer_token or "",))
                 observation.update(output={"error": str(safe_error)})
                 raise safe_error from None
-            observation.update(output=_redact_secrets(result))
+            observation.update(
+                output=_redact_secrets(result, (self.bearer_token or "",))
+            )
             return result
 
     async def _run_with_client(self, prompt: str, client: Any) -> str:
@@ -299,7 +313,9 @@ class Agent:
         with langfuse.start_as_current_observation(
             as_type="span",
             name="agent-execution",
-            input=_redact_secrets({"question": prompt}),
+            input=_redact_secrets(
+                {"question": prompt}, (self.bearer_token or "",)
+            ),
         ) as observation:
             try:
                 if self.openai_client is not None:
@@ -308,10 +324,14 @@ class Agent:
                     async with AsyncOpenAI() as client:
                         answer = await self._run_with_client(prompt, client)
             except Exception as exc:
-                safe_error = _safe_error(exc)
+                safe_error = _safe_error(exc, (self.bearer_token or "",))
                 observation.update(output={"error": str(safe_error)})
                 raise safe_error from None
-            observation.update(output=_redact_secrets({"answer": answer}))
+            observation.update(
+                output=_redact_secrets(
+                    {"answer": answer}, (self.bearer_token or "",)
+                )
+            )
             return answer
 
 

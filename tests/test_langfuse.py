@@ -209,6 +209,9 @@ async def test_mcp_tool_observation_records_name_arguments_and_result(monkeypatc
 async def test_model_and_tool_observations_are_children_of_agent_trace(monkeypatch):
     active_observation = ContextVar("active_observation", default=None)
     observations = []
+    bearer_token = "trace-bearer-sentinel"
+    server_url = "https://endpoint-user:endpoint-pass@remote.test/mcp?token=url-secret"
+    connection_settings = []
 
     class FakeLangfuse:
         @contextmanager
@@ -249,7 +252,9 @@ async def test_model_and_tool_observations_are_children_of_agent_trace(monkeypat
             SimpleNamespace(
                 choices=[
                     SimpleNamespace(
-                        message=SimpleNamespace(content="Done", tool_calls=[])
+                        message=SimpleNamespace(
+                            content=f"Done {bearer_token}", tool_calls=[]
+                        )
                     )
                 ],
                 usage=SimpleNamespace(
@@ -269,12 +274,13 @@ async def test_model_and_tool_observations_are_children_of_agent_trace(monkeypat
     openai_client.chat.completions.create = create
 
     @asynccontextmanager
-    async def connect_to_server(_server_url, **_kwargs):
+    async def connect_to_server(server, *, bearer_token=None):
+        connection_settings.append((server, bearer_token))
         yield object()
 
     async def call_tool(_client, _tool, arguments):
         assert arguments == {"symbol": "ABC"}
-        return {"matches": 1}
+        return {"matches": 1, "echo": bearer_token}
 
     monkeypatch.setattr(client_agent, "connect_to_server", connect_to_server)
     monkeypatch.setattr(client_agent, "call_tool", call_tool)
@@ -284,15 +290,19 @@ async def test_model_and_tool_observations_are_children_of_agent_trace(monkeypat
         "_serialize_tool_result",
         lambda result, _encoding, _budget: (json.dumps(result), 2),
     )
-    agent = Agent(openai_client=openai_client)
+    agent = Agent(
+        server_url,
+        bearer_token=bearer_token,
+        openai_client=openai_client,
+    )
     agent.tools = {"lookup": object()}
 
-    assert await agent.run("Find ABC") == "Done"
+    assert await agent.run(f"Find ABC {bearer_token}") == f"Done {bearer_token}"
 
     root = observations[0]
     assert root["name"] == "agent-execution"
-    assert root["input"] == {"question": "Find ABC"}
-    assert root["output"] == {"answer": "Done"}
+    assert root["input"] == {"question": "Find ABC [REDACTED]"}
+    assert root["output"] == {"answer": "Done [REDACTED]"}
     child_observations = observations[1:]
     assert [item["name"] for item in child_observations] == [
         "openai-chat-completion",
@@ -303,7 +313,7 @@ async def test_model_and_tool_observations_are_children_of_agent_trace(monkeypat
 
     first_generation, tool_observation, final_generation = child_observations
     assert first_generation["input"]["messages"] == [
-        {"role": "user", "content": "Find ABC"}
+        {"role": "user", "content": "Find ABC [REDACTED]"}
     ]
     assert first_generation["output"]["tool_calls"] == [
         {"id": "call-1", "name": "lookup", "arguments": '{"symbol":"ABC"}'}
@@ -317,14 +327,26 @@ async def test_model_and_tool_observations_are_children_of_agent_trace(monkeypat
     assert tool_observation["input"] == {
         "arguments": '{"symbol":"ABC"}'
     }
-    assert tool_observation["output"] == {"matches": 1}
-    assert final_generation["output"]["content"] == "Done"
+    assert tool_observation["output"] == {
+        "matches": 1,
+        "echo": "[REDACTED]",
+    }
+    assert final_generation["output"]["content"] == "Done [REDACTED]"
     assert final_generation["metadata"]["latency_ms"] >= 0
     assert final_generation["usage_details"] == {
         "input": 30,
         "output": 2,
         "total": 32,
     }
+    assert connection_settings == [(server_url, bearer_token)]
+    trace_json = json.dumps(observations)
+    for secret in (
+        bearer_token,
+        "endpoint-user",
+        "endpoint-pass",
+        "url-secret",
+    ):
+        assert secret not in trace_json
 
 
 def test_secret_filter_redacts_nested_credentials():
@@ -363,22 +385,24 @@ async def test_openai_request_and_failure_trace_are_redacted(monkeypatch):
     class FakeOpenAI:
         chat = SimpleNamespace(completions=SimpleNamespace(create=None))
 
+    bearer_token = "topsecret-trace-sentinel"
+
     async def create(**_kwargs):
-        raise RuntimeError("request failed with Bearer topsecret123")
+        raise RuntimeError(f"request failed with {bearer_token}")
 
     client = FakeOpenAI()
     client.chat.completions.create = create
-    with pytest.raises(RuntimeError, match=r"Bearer \[REDACTED\]") as error:
-        await Agent()._request_completion(
+    with pytest.raises(RuntimeError, match=r"\[REDACTED\]") as error:
+        await Agent(bearer_token=bearer_token)._request_completion(
             client,
             model="test-model",
             messages=[{"role": "user", "content": "api_key=supersecret"}],
         )
 
-    assert "topsecret123" not in str(error.value)
+    assert bearer_token not in str(error.value)
     assert observations[0]["input"] == {
         "messages": [{"role": "user", "content": "api_key=[REDACTED]"}]
     }
     assert observations[0]["output"] == {
-        "error": "request failed with Bearer [REDACTED]"
+        "error": "request failed with [REDACTED]"
     }
