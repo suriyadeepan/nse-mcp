@@ -3,6 +3,9 @@
 import argparse
 import logging
 import os
+import re
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from mcp.server import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
@@ -11,10 +14,39 @@ from .auth import BearerAuthMiddleware
 from .tools import register_tools
 
 logger = logging.getLogger(__name__)
+STREAMABLE_HTTP_PATH = "/mcp"
+_REQUEST_ID_PATTERN = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+class RequestCorrelationMiddleware:
+    """Log validated non-secret request IDs for authenticated MCP requests."""
+
+    def __init__(self, app: Callable[..., Awaitable[None]]) -> None:
+        self.app = app
+
+    async def __call__(
+        self,
+        scope: dict[str, Any],
+        receive: Callable[..., Awaitable[dict[str, Any]]],
+        send: Callable[..., Awaitable[None]],
+    ) -> None:
+        if scope.get("type") == "http" and scope.get("path") == STREAMABLE_HTTP_PATH:
+            headers = dict(scope.get("headers", []))
+            request_id = headers.get(b"x-kite-request-id", b"").decode(
+                "ascii", "ignore"
+            )
+            if _REQUEST_ID_PATTERN.fullmatch(request_id):
+                logger.info(
+                    "MCP request correlation_id=%s method=%s path=%s",
+                    request_id,
+                    scope.get("method", ""),
+                    STREAMABLE_HTTP_PATH,
+                )
+        await self.app(scope, receive, send)
+
 
 mcp = MCPServer("kite-mcp")
 register_tools(mcp)
-STREAMABLE_HTTP_PATH = "/mcp"
 
 
 def build_transport_security(
@@ -40,9 +72,11 @@ def build_transport_security(
 
 transport_security = build_transport_security()
 app = BearerAuthMiddleware(
-    mcp.streamable_http_app(
-        streamable_http_path=STREAMABLE_HTTP_PATH,
-        transport_security=transport_security,
+    RequestCorrelationMiddleware(
+        mcp.streamable_http_app(
+            streamable_http_path=STREAMABLE_HTTP_PATH,
+            transport_security=transport_security,
+        )
     )
 )
 

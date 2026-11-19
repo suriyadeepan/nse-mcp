@@ -186,3 +186,53 @@ async def test_streamable_http_initializes_lists_tools_and_executes_tool(monkeyp
         "2024-01-02T00:00:00+00:00"
     )
     assert analytics_calls[0]["limit"] == 10
+
+
+@pytest.mark.anyio
+async def test_streamable_http_logs_valid_request_correlation_id(monkeypatch, caplog):
+    request_id = "d61f7b6e-9f56-489f-8ef8-c4f610de1b2c"
+    monkeypatch.setattr(
+        server_tools.analytics,
+        "get_bars",
+        lambda **_arguments: {"bars": [], "returned_count": 0},
+    )
+    caplog.set_level("INFO", logger="server.main")
+
+    mcp_server = MCPServer("correlation-test")
+    server_tools.register_tools(mcp_server)
+    mcp_app = mcp_server.streamable_http_app(
+        streamable_http_path="/mcp",
+        transport_security=server_main.build_transport_security(),
+    )
+    app = BearerAuthMiddleware(server_main.RequestCorrelationMiddleware(mcp_app))
+    transport = httpx2.ASGITransport(app=app)
+    async with mcp_app.router.lifespan_context(mcp_app):
+        async with httpx2.AsyncClient(
+            transport=transport,
+            base_url="http://127.0.0.1:8000",
+            headers={
+                "Authorization": "Bearer http-test-token-with-at-least-32-chars",
+                "X-Kite-Request-Id": request_id,
+            }
+        ) as authorized_http_client:
+            transport = streamable_http_client(
+                "http://127.0.0.1:8000/mcp", http_client=authorized_http_client
+            )
+            async with Client(transport) as mcp_client:
+                result = await mcp_client.call_tool(
+                    "get_bars",
+                    {
+                        "arguments": {
+                            "symbol": "RELIANCE",
+                            "start_datetime": "2024-01-01T00:00:00Z",
+                            "end_datetime": "2024-01-02T00:00:00Z",
+                            "limit": 10,
+                        }
+                    },
+                )
+
+    assert not result.is_error
+    assert any(
+        f"correlation_id={request_id}" in record.getMessage()
+        for record in caplog.records
+    )

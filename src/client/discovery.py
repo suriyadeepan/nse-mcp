@@ -29,22 +29,24 @@ async def connect_to_server(
     server_url: str = DEFAULT_SERVER_URL,
     timeout: float = 10.0,
     bearer_token: str | None = None,
+    http_client: httpx2.AsyncClient | None = None,
 ) -> AsyncIterator[Client]:
     """Open a Streamable HTTP MCP session and report connection failures clearly."""
-    if bearer_token:
+    owns_http_client = http_client is None
+    if http_client is None and bearer_token:
         http_client = httpx2.AsyncClient(
             headers={"Authorization": f"Bearer {bearer_token}"}
         )
+    if http_client is not None:
         transport = streamable_http_client(server_url, http_client=http_client)
         client = Client(transport, read_timeout_seconds=timeout)
     else:
         transport = None
-        http_client = None
         client = Client(server_url, read_timeout_seconds=timeout)
     try:
         await client.__aenter__()
     except Exception:
-        if http_client is not None:
+        if owns_http_client and http_client is not None:
             await http_client.aclose()
         # Avoid echoing the URL: it may contain credentials or sensitive query data.
         raise MCPConnectionError(
@@ -57,7 +59,7 @@ async def connect_to_server(
         try:
             await client.__aexit__(None, None, None)
         finally:
-            if http_client is not None:
+            if owns_http_client and http_client is not None:
                 await http_client.aclose()
 
 
