@@ -254,6 +254,33 @@ def test_remote_server_config_requires_token_without_exposing_values(monkeypatch
     assert "mcp.example.test" not in str(error.value)
 
 
+def test_cli_rejects_remote_server_without_token_safely(monkeypatch, capsys):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "kite-mcp-client",
+            "--server",
+            "https://private.example.test/mcp",
+            "--prompt",
+            "hello",
+        ],
+    )
+    monkeypatch.delenv("MCP_BEARER_TOKEN", raising=False)
+    monkeypatch.setattr(
+        client_main,
+        "_initialize_langfuse",
+        lambda: SimpleNamespace(flush=lambda: None),
+    )
+
+    with pytest.raises(SystemExit, match="2"):
+        client_main.main()
+
+    error = capsys.readouterr().err
+    assert "MCP_BEARER_TOKEN is required" in error
+    assert "private.example.test" not in error
+
+
 def test_openai_client_reads_api_key_from_environment(monkeypatch):
     from openai import AsyncOpenAI
 
@@ -402,6 +429,64 @@ async def test_agent_uses_same_endpoint_and_token_for_discovery_and_execution(
     assert answer == "Done."
     assert executions == ["ok"]
     assert len(fake_openai.requests[0]["tools"]) == 1
+
+
+@pytest.mark.anyio
+async def test_authenticated_agent_executes_multiple_tools_within_round_limit(
+    monkeypatch,
+):
+    from server.auth import BearerAuthMiddleware
+
+    token = "multi-tool-auth-sentinel"
+    monkeypatch.setenv("MCP_BEARER_TOKEN", token)
+
+    class FakeLangfuse:
+        @contextmanager
+        def start_as_current_observation(self, **kwargs):
+            yield SimpleNamespace(update=lambda **values: None)
+
+    langfuse = ModuleType("langfuse")
+    langfuse.get_client = lambda: FakeLangfuse()
+    monkeypatch.setitem(sys.modules, "langfuse", langfuse)
+
+    mcp_server = MCPServer("protected-multi-tool")
+    executions = []
+
+    @mcp_server.tool(name="protected_lookup", description="Return a protected value.")
+    def protected_lookup(value: str) -> str:
+        executions.append(value)
+        return f"result:{value}"
+
+    fake_openai = FakeOpenAI(
+        [
+            completion(
+                tool_calls=[
+                    tool_call("call-1", "protected_lookup", '{"value":"A"}'),
+                    tool_call("call-2", "protected_lookup", '{"value":"B"}'),
+                ]
+            ),
+            completion(
+                tool_calls=[
+                    tool_call("call-3", "protected_lookup", '{"value":"C"}')
+                ]
+            ),
+            completion("Three protected lookups completed."),
+        ]
+    )
+    app = BearerAuthMiddleware(mcp_server.streamable_http_app())
+    async with serve_mcp_app(app) as url:
+        agent = Agent(
+            url,
+            bearer_token=token,
+            openai_client=fake_openai,
+            max_tool_rounds=2,
+        )
+        answer = await agent.run("Look up A, B, and C")
+
+    assert answer == "Three protected lookups completed."
+    assert executions == ["A", "B", "C"]
+    assert len(fake_openai.requests) == 3
+    assert fake_openai.requests[-1]["tool_choice"] == "none"
 
 
 @pytest.mark.anyio

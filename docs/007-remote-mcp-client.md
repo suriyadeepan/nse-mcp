@@ -26,6 +26,12 @@
 - Added a protected ASGI agent regression that completes discovery, invokes a selected tool, and returns the final answer using one endpoint/token configuration.
 - `uv run --with pytest pytest tests/test_client.py tests/test_langfuse.py` — 25 passed, including the existing dynamic discovery, schema validation, tool execution, multi-round, and trace coverage.
 
+## Authenticated client regression coverage
+
+- Expanded `tests/test_client.py` with a CLI-level missing-token check and an authenticated multi-tool agent test that performs three tool calls across the configured two-round limit, then requests a final answer. Existing authenticated discovery/execution, invalid-token sanitization, dynamic catalogue, schema rejection, and safe tool error tests remain in the suite.
+- `uv run --with pytest pytest tests/test_client.py` — 17 passed.
+- `uv run --with pytest pytest tests/test_client.py tests/test_langfuse.py` — 27 passed.
+
 ## Verification evidence
 
 - `uv run python --version` — `Python 3.15.2`.
