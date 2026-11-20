@@ -1,4 +1,4 @@
-# Kite Market Data MCP
+# NSE MCP
 
 Explore NSE market data with a local analytics engine and an AI assistant that can discover and use its tools through the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). The project covers the path from raw market files to validated Parquet, time-aware analytics, and an optional AWS-hosted MCP endpoint.
 
