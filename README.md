@@ -1,5 +1,7 @@
 # Verification
 
+See the [consolidated project documentation](docs/documentation.md) and [tutorial](docs/tutorial.md) for the feature overview and end-to-end workflows.
+
 Run the test suite with pytest supplied by `uv`:
 
 ```sh
@@ -8,7 +10,7 @@ uv run --no-project --with pytest --python .venv/bin/python -- python -m pytest 
 
 ## Demo: Remote MCP analytics
 
-Run from the repository root. This walkthrough uses the existing [Step 7 client guide](docs/tutorial-007-remote-mcp-client.md) and [Step 8 verification guide](docs/tutorial-008-independent-analytics-verification.md); configure credentials and prerequisites there before starting. No source edits are needed between stages.
+The remote Lambda endpoint is currently torn down. Restore it using step 5 of the [consolidated tutorial](docs/tutorial.md), then run this walkthrough from the repository root. The [consolidated project documentation](docs/documentation.md) summarizes the architecture and verification evidence. No source edits are needed between stages.
 
 1. **Architecture and dataset:** Review the [ingestion and S3 dataset tutorial](docs/tutorial-001-ingestion.md) and [AWS Lambda deployment notes](docs/006-aws_lambda.md) for the data path and architecture.
 2. **Terraform endpoint:** Confirm the deployed Lambda and Function URL with the [Step 7 deployment walkthrough](docs/tutorial-007-remote-mcp-client.md). From the repository root, export the endpoint from the current Terraform state:
