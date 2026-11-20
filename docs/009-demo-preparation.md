@@ -93,9 +93,14 @@ aws s3api list-objects-v2 --bucket nse-mcp-data --prefix data/processed/ --query
 
 `terraform state list` returned no entries. Targeted Lambda configuration, Function URL, invoke policy, and IAM role reads returned resource-not-found/no-such-entity; the CloudWatch query returned `[]`. Together with Terraform's seven-destroyed result, this confirms the seven disposable resources are absent. An account-wide `aws lambda list-functions` check was denied because this identity lacks `lambda:ListFunctions`; the targeted function check was used instead. The S3 inventory returned `[2781, 326546421]`, exactly matching the pre-destroy object and byte baseline. No S3 bucket or object was deleted. After verification, the local plan and captured Terraform logs were removed as directed by the teardown guide.
 
+### T005 — Documentation and lineage audit (2026-11-20)
+
+The README sequence covers architecture and S3, the Terraform Lambda and Function URL, runtime MCP discovery, a natural-language query and tool selection, Step 8 ground-truth and invalid-symbol checks, Langfuse and CloudWatch review, and saved-plan teardown. Its setup and verification commands reuse the existing Step 7/8 guides; no code edits between stages are required. The journal's evidence map distinguishes fresh observations from prior Step 7/8 evidence. The TODO lineage audit maps R001–R005 through P001–P008 to T001–T005 and the corresponding README, journal, plan-review, and post-destroy evidence. No lineage gaps or pending approval/post-destroy checks remain. Scope stayed within documentation and the explicitly approved T004 teardown; no application, test, Terraform configuration, deployment, or dataset changes were made.
+
 ### Verification record
 
-- Automated tests: none run for T002; this task captures and reuses evidence and adds no application or test changes.
+- Implementation: T001 README sequence, T002 workflow evidence, T003 saved-plan review, and T004 approved teardown are documented above.
+- Automated tests: none run for T001–T004. This documentation and infrastructure lifecycle scope adds no tests or application changes; existing tests were not rerun.
 - Live verification: authenticated MCP discovery and the natural-language client query passed on 2026-11-20. Step 8 analytics, invalid-symbol, and CloudWatch checks are reused from their recorded 2026-11-19 pass.
 - Langfuse: prior complete traces are verified in Step 7; the user manually inspected the current query trace in the browser on 2026-11-20 and confirmed all checklist items passed.
 - Teardown: the user approved the exact T003 plan; Terraform applied it and reported seven destroyed. Post-destroy Terraform/AWS checks confirmed no managed demo resources remain, and the processed S3 inventory matches baseline. The account-wide Lambda listing was unavailable due to missing permission; targeted resource checks confirmed absence.
