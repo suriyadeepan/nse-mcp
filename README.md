@@ -1,67 +1,70 @@
-# Verification
+# Kite Market Data MCP
 
-See the [consolidated project documentation](docs/documentation.md) and [tutorial](docs/tutorial.md) for the feature overview and end-to-end workflows.
+Explore NSE market data with a local analytics engine and an AI assistant that can discover and use its tools through the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/). The project covers the path from raw market files to validated Parquet, time-aware analytics, and an optional AWS-hosted MCP endpoint.
 
-Run the test suite with pytest supplied by `uv`:
+![Block diagram of the NSE market analytics MCP system](images/block-diagram.svg)
+
+## What you can do
+
+- **Prepare a clean dataset:** validate raw OHLCV files against the NIFTY 50 symbol index and write partitioned Parquet for efficient queries.
+- **Ask focused market questions:** retrieve candles, session statistics, price extremes, volume buckets, common indicators, and daily symbol comparisons.
+- **Connect AI clients through MCP:** discover typed analytics tools at runtime over local stdio or Streamable HTTP, then answer questions with one or more tool calls.
+- **Inspect the work:** optionally trace model and tool activity with Langfuse, and independently compare remote results with local calculations.
+- **Run the service on AWS:** deploy the read-only analytics server as a Lambda container behind an authenticated Function URL, with Terraform-managed infrastructure and CloudWatch logs.
+
+## Architecture
+
+The local Python client discovers analytics tools over MCP. For remote use, an authenticated Lambda Function URL fronts a stateless Lambda service; Terraform manages the disposable service resources while the processed S3 dataset remains read-only.
+
+![AWS architecture, deployment flow, and IAM boundaries](images/architecture-v4.png)
+
+## Data flow
+
+Ingestion validates raw OHLCV files against the NIFTY 50 index and writes partitioned Parquet. DuckDB and PyArrow read only the needed partitions to answer typed MCP tool calls; the client turns tool results into a natural-language response. Optional traces and AWS logs support inspection.
+
+![Offline ingestion and online request data flow](images/data-flow-v4.png)
+
+The analytics layer uses predefined, parameterized queries. Timestamps are timezone-aware; trading dates and session buckets follow India time. Missing values remain explicit, and invalid inputs return stable errors. The same tools work against local files or the read-only S3 dataset.
+
+## Try it locally
+
+Install dependencies and process the raw files indexed by `data/index/NIFTY50.csv`:
+
+```sh
+uv sync
+uv run python scripts/ingestion.py
+```
+
+Start the MCP server:
+
+```sh
+uv run uvicorn server.main:app --host 127.0.0.1 --port 8000
+```
+
+In another terminal, configure `OPENAI_API_KEY` in your environment and ask a question about a symbol and date present in your dataset:
+
+```sh
+uv run python -m client.main --server http://127.0.0.1:8000/mcp \
+  --prompt 'Summarize RELIANCE on January 15, 2025, including open, close, return, VWAP, and number of bars.'
+```
+
+The client discovers the server's tools and schemas at runtime, validates model arguments, and executes the selected analytics calls. See the [tutorial](docs/tutorial.md) for analytics examples, MCP inspection, tracing, remote verification, and deployment workflows.
+
+## Remote demo status
+
+The disposable AWS Lambda endpoint is currently torn down. Local workflows remain available; restoring the remote demo requires AWS access and an explicitly reviewed Terraform plan. The existing processed S3 dataset is preserved. The tutorial describes restoration, independent result checks, CloudWatch inspection, and safe teardown.
+
+## Documentation
+
+- [Tutorial](docs/tutorial.md): run ingestion, analytics, the local MCP client, and optional remote workflows.
+- [Remote demo](docs/demo.md): walk through the AWS-hosted MCP analytics flow and its verification steps.
+- [Project documentation](docs/documentation.md): architecture, tool contracts, deployment boundaries, and verification evidence.
+- [Feature records](docs/): retained requirements, plans, implementation journals, and focused feature tutorials.
+
+## Development
+
+Run the test suite with the project's Python environment:
 
 ```sh
 uv run --no-project --with pytest --python .venv/bin/python -- python -m pytest tests/ -q
 ```
-
-## Demo: Remote MCP analytics
-
-The remote Lambda endpoint is currently torn down. Restore it using step 5 of the [consolidated tutorial](docs/tutorial.md), then run this walkthrough from the repository root. The [consolidated project documentation](docs/documentation.md) summarizes the architecture and verification evidence. No source edits are needed between stages.
-
-1. **Architecture and dataset:** Review the [ingestion and S3 dataset tutorial](docs/tutorial-001-ingestion.md) and [AWS Lambda deployment notes](docs/006-aws_lambda.md) for the data path and architecture.
-2. **Terraform endpoint:** Confirm the deployed Lambda and Function URL with the [Step 7 deployment walkthrough](docs/tutorial-007-remote-mcp-client.md). From the repository root, export the endpoint from the current Terraform state:
-
-   ```sh
-   export MCP_SERVER_URL="$(terraform -chdir=terraform output -raw mcp_endpoint_url)"
-   ```
-
-3. **Configure and run the local client:** Use the Step 7 commands to install dependencies and create/edit the ignored `.env`:
-
-   ```sh
-   uv sync
-   if [ ! -e .env ]; then (umask 077 && touch .env); fi
-   ${EDITOR:-vi} .env
-   ```
-
-   Set `MCP_BEARER_TOKEN` and `OPENAI_API_KEY` as described in “Configure credentials locally” in the Step 7 guide (plus optional Langfuse values). The exported Terraform endpoint takes precedence over any `MCP_SERVER_URL` value in `.env`. Then run the existing single-tool query:
-
-   ```sh
-   uv run python -m client.main \
-     --prompt 'For RELIANCE on 2025-01-02, report the open, close, return, VWAP, and number of bars.'
-   ```
-
-   The client discovers MCP tools at runtime; inspect its output for the model-selected tool and analytics answer. The guide also has a multi-tool query if you want to show multiple tool calls.
-4. **Ground truth and invalid-symbol rejection:** Run the existing Step 8 verification command. It checks the remote result against local data, submits an invalid symbol, and correlates both calls with CloudWatch logs:
-
-   ```sh
-   (
-     set -eu
-     set -a
-     . ./.env
-     set +a
-     export MCP_SERVER_URL="$(terraform -chdir=terraform output -raw mcp_endpoint_url)"
-     export MCP_LAMBDA_LOG_GROUP=/aws/lambda/kite-mcp
-     export AWS_REGION=ap-south-1
-     export AWS_DEFAULT_REGION="$AWS_REGION"
-     uv run python scripts/verify_remote_analytics.py
-   )
-   ```
-
-5. **Inspect the trace in Langfuse:** Sign in to the Langfuse project configured in `.env`, open **Traces**, and select the trace for the query you just ran. Check off each item:
-
-   - [ ] The query trace is present.
-   - [ ] The model request and response are present.
-   - [ ] MCP tool inputs and results, and the final answer, are present.
-   - [ ] No credentials appear in trace inputs or outputs.
-
-6. **Inspect CloudWatch:** View recent Lambda log events in the configured AWS region:
-
-   ```sh
-   aws logs tail /aws/lambda/kite-mcp --since 1h --region ap-south-1
-   ```
-
-7. **Tear down when the demo is no longer needed:** Follow “Destroy the demo deployment and keep the dataset” in the Step 7 guide. Create and inspect a saved destroy plan, obtain explicit human approval for that exact plan, then apply it and verify the Terraform state and preserved S3 dataset. Never approve a plan that deletes S3 data or changes unexpected resources.
