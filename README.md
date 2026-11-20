@@ -50,9 +50,6 @@ uv run python -m client.main --server http://127.0.0.1:8000/mcp \
 
 The client discovers the server's tools and schemas at runtime, validates model arguments, and executes the selected analytics calls. See the [tutorial](docs/tutorial.md) for analytics examples, MCP inspection, tracing, remote verification, and deployment workflows.
 
-## Remote demo status
-
-The disposable AWS Lambda endpoint is currently torn down. Local workflows remain available; restoring the remote demo requires AWS access and an explicitly reviewed Terraform plan. The existing processed S3 dataset is preserved. The tutorial describes restoration, independent result checks, CloudWatch inspection, and safe teardown.
 
 ## Documentation
 
