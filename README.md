@@ -26,6 +26,10 @@ Ingestion validates raw OHLCV files against the NIFTY 50 index and writes partit
 
 The analytics layer uses predefined, parameterized queries. Timestamps are timezone-aware; trading dates and session buckets follow India time. Missing values remain explicit, and invalid inputs return stable errors. The same tools work against local files or the read-only S3 dataset.
 
+## Future development scope
+
+The roadmap prioritizes an interactive CLI, reusable investment prompts, and MCP data-discovery tools (P0); a web UI, interactive charts, expanded analytics, and a market screener (P1); portfolio simulation, research workspaces, and advanced screening (P2); and conversation memory, multi-tool query handling, and answer verification (P3). The MCP analytics server remains independent of the frontend, while CLI and web clients share a service layer. Tool contracts should use typed parameters, bounded outputs, predictable errors, and explicit data-availability metadata. See the [full future development scope](docs/future-development-scope.md).
+
 ## Try it locally
 
 Install dependencies and process the raw files indexed by `data/index/NIFTY50.csv`:
